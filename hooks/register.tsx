@@ -16,7 +16,6 @@ const STRIP_GAP = 3
 const MAX_STRIPS = 4 // past this, the finished ones fold into one "+N more" strip
 const FOLD_MS = 5000 // finished strips stay this long, failed ones stay until the bar goes
 const ASK_DELAY_MS = 600 // a permission ask still open after this waits on the person
-const DONE_SOUND_MIN_MS = 20_000 // a short turn finishes quietly
 const ANSWER_MIN_CHARS = 280 // this much text in a step with no tool call reads as the final answer
 // while text or thinking streams, the bar is written at most this often: every write is a new picture,
 // and a picture swapped many times a second restarts its animations and reads as flicker
@@ -42,11 +41,12 @@ const LABEL = {
   stopped: '중단됨',
   done: '완료',
   untitled: '계속',
+  agentsAlt: '에이전트',
   agentStarting: '시작 중',
   agentDone: '완료',
   agentFailed: '실패',
   agentStopped: '중단됨',
-  button: 'Progress',
+  button: '진행',
   calls: '도구 호출',
   running: '실행 중',
   writing: '준비 중',
@@ -441,30 +441,6 @@ function stripsSvg(v: { shown: AgentRun[]; hidden: AgentRun[] }, W: number, now:
 
 // ---------- engine glue ----------
 
-// the engine's player first (afplay on macOS); PowerShell where it cannot play
-function play($: EngineInterface, name: 'decision' | 'error' | 'done') {
-  const file = `${$.plugin.root}/sounds/${name}.wav`.replace(/\//g, '\\')
-  void $.audio
-    .play({ asset: `sounds/${name}.wav` })
-    .catch(() =>
-      $.process
-        .run(
-          [
-            'powershell',
-            '-NoLogo',
-            '-NoProfile',
-            '-NonInteractive',
-            '-ExecutionPolicy',
-            'Bypass',
-            '-Command',
-            `(New-Object Media.SoundPlayer '${file}').PlaySync()`,
-          ],
-          { timeoutMs: 5000 },
-        )
-        .catch(() => undefined),
-    )
-}
-
 const isLive = (b: TurnBar) => b.state === 'running' || b.state === 'needs_input'
 // an interactive Svg (tooltips) is a frame that reloads on every redraw, so a bar that still redraws every
 // second would flicker; it turns interactive only once nothing on it moves any more
@@ -512,20 +488,17 @@ async function flush($: EngineInterface) {
   )
 }
 
-// needs_input on and off for the live turn; the sound plays once, on the way in
+// needs_input on and off for the live turn
 async function setWaiting($: EngineInterface, isWaiting: boolean, note: string | null) {
   const l = live
   const id = l?.turnId
   if (!l || !id) return
-  let isEntered = false
   await update($, bars, list =>
     list.map(b => {
       if (b.id !== id || b.state !== (isWaiting ? 'running' : 'needs_input')) return b
-      isEntered = isWaiting
       return { ...b, state: isWaiting ? ('needs_input' as const) : ('running' as const), note: isWaiting ? note : null }
     }),
   )
-  if (isEntered) play($, 'decision')
 }
 
 function syncAgents(b: TurnBar, now: number): TurnBar {
@@ -569,9 +542,8 @@ export const register: Register = on => {
     $.clock.every(1000, async () => {
       if (isTicking || agentHome.size > 0 || (await $.clock.now()) < foldUntil) await update($, tick, n => n + 1)
     })
-    await $.command.register({ name: 'turnbar', description: 'Show or hide the turn progress bar' })
-    await $.command.register({ name: 'turnbar-sounds', description: 'Play the decision, error and done sounds' })
-    await $.command.register({ name: 'turnbar-clear', description: 'Remove the turn progress bar' })
+    await $.command.register({ name: 'turnbar', description: '턴 진행 바 보이기/숨기기' })
+    await $.command.register({ name: 'turnbar-clear', description: '턴 진행 바 지우기' })
 
     return next(e)
   })
@@ -767,7 +739,6 @@ export const register: Register = on => {
         const isFailed = e.reason !== 'answer'
         const tool = e.reason === 'aborted' ? LABEL.agentStopped : isFailed ? LABEL.agentFailed : LABEL.agentDone
         await editAgent($, agentId, a => ({ ...a, state: isFailed ? 'error' : 'done', tool, endedAt: now }))
-        if (isFailed) play($, 'error')
         agentHome.delete(agentId)
         waiting.delete(agentId)
       }
@@ -804,26 +775,16 @@ export const register: Register = on => {
               },
       ),
     )
-    if (state === 'done' && e.durationMs >= DONE_SOUND_MIN_MS) play($, 'done')
-    if (state === 'error') play($, 'error')
 
     return next(e)
   })
 
   on('command.run', { command: 'turnbar' }, async $ => {
-    if ((await read($, bars)).length === 0) return { text: 'No bar yet: one appears with the next request.' }
+    if ((await read($, bars)).length === 0) return { text: '아직 바가 없습니다. 다음 요청부터 나타납니다.' }
     const open = await read($, isOpen)
     await update($, isOpen, () => !open)
 
-    return { text: open ? 'Turn bar hidden.' : 'Turn bar shown.' }
-  })
-
-  on('command.run', { command: 'turnbar-sounds' }, async $ => {
-    play($, 'decision')
-    $.clock.after(900, () => play($, 'error'))
-    $.clock.after(1800, () => play($, 'done'))
-
-    return { text: 'Sounds: decision, error, done.' }
+    return { text: open ? '진행 바를 숨겼습니다.' : '진행 바를 다시 표시합니다.' }
   })
 
   on('command.run', { command: 'turnbar-clear' }, async $ => {
@@ -831,7 +792,7 @@ export const register: Register = on => {
     lastStrip.clear()
     await update($, bars, () => [])
 
-    return { text: 'Turn bar removed.' }
+    return { text: '진행 바를 지웠습니다.' }
   })
 
   // always drawn, so the person sees the mod is loaded: plain text, since a Button's chip is taller than the footer
@@ -892,7 +853,7 @@ export const register: Register = on => {
           const color = STATE_COLOR[b.state]
           const time = clockText((b.endedAt ?? now) - b.startedAt)
           const count = pillCount(b)
-          const agentsAlt = v ? `; agents: ${(b.agents ?? []).map(a => `${a.title} ${a.state}`).join(', ')}` : ''
+          const agentsAlt = v ? `; ${LABEL.agentsAlt}: ${(b.agents ?? []).map(a => `${a.title} ${a.tool}`).join(', ')}` : ''
           const alt = `${b.title}: ${pillName(b)}${count ? `, ${count}` : ''}, ${time}${agentsAlt}`
           const frac = b.state === 'done' ? 1 : Math.min(1, Math.max(0, b.frac))
           const pct = Math.round(frac * 100)

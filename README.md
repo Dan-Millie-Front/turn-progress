@@ -36,7 +36,6 @@ claude --plugin-dir ~/Github/turn-progress
 ## 명령
 
 - `/turnbar` 표시/숨김
-- `/turnbar-sounds` 사운드 3종 재생
 - `/turnbar-clear` 바 제거
 
 ## 개발
@@ -49,4 +48,4 @@ npx -y -p typescript@5.6 tsc -p .
 
 자세한 명세는 [docs/SPEC.md](docs/SPEC.md)에 있습니다.
 
-UI와 사운드는 MIT 라이선스인 [plan-progress](https://github.com/zycck/claude-mods)(Kirill Serditov)에서 가져와 고쳤습니다.
+UI는 MIT 라이선스인 [plan-progress](https://github.com/zycck/claude-mods)(Kirill Serditov)에서 가져와 고쳤습니다.

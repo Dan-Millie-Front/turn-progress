@@ -1,7 +1,7 @@
 # turn-progress 구현 명세
 
 한 턴(내가 요청 → Claude가 생각 → 도구로 작업 → 마무리 답변)을 프롬프트 위 **상태 바 한 줄**로 실시간 표시하는 Claude Code 모드.
-UI는 [zycck/claude-mods](https://github.com/zycck/claude-mods)의 `plan-progress`를 거의 그대로 가져온다. 픽셀 채움, 상태 pill, 도구 틱, 서브에이전트 스트립, 사운드, Progress 버튼이 그 대상이다.
+UI는 [zycck/claude-mods](https://github.com/zycck/claude-mods)의 `plan-progress`를 거의 그대로 가져온다. 픽셀 채움, 상태 pill, 도구 틱, 서브에이전트 스트립이 그 대상이다.
 
 > 이 문서만으로 새 저장소에서 처음부터 구현할 수 있게 썼다. 부록 A의 소스는 Claude Code **2.1.286**에서 `claude plugin validate`, `tsc --strict`, 헤드리스 실행(모든 훅 정상 종료)까지 확인했다. 그대로 복사해서 시작하면 된다.
 
@@ -17,7 +17,6 @@ UI는 [zycck/claude-mods](https://github.com/zycck/claude-mods)의 `plan-progres
 - 오른쪽 고정 폭 칸에는 **경과 시간**을 보여준다. 턴 진행률은 미리 알 수 없어서 퍼센트 대신 시간을 쓴다.
 - 서브에이전트는 바 아래 상태 스트립으로 그린다. plan-progress와 동일하다.
 - 상태는 `running`, `needs_input`(질문, 플랜 승인, 권한 승인 대기), `error`, `stopped`(사용자 중단), `done`.
-- 결정이 필요할 때, 오류가 났을 때, 긴 턴(20초 이상)이 끝났을 때 소리를 낸다.
 
 **하지 않는다 (plan-progress와 다른 점)**
 - 모델에게 도구를 주지 않고, 시스템 프롬프트에 규칙도 넣지 않는다. 진행 상태는 엔진 이벤트만으로 움직인다. 토큰이 드는 곳은 긴 프롬프트의 제목 요약 한 번(Haiku, 약 100토큰)뿐이다.
@@ -31,12 +30,11 @@ UI는 [zycck/claude-mods](https://github.com/zycck/claude-mods)의 `plan-progres
 ```
 turn-progress/                    ← 새 저장소 루트 = 플러그인 폴더
   .claude-plugin/plugin.json
+  .claude-plugin/marketplace.json  ← 저장소 자체를 마켓플레이스로 (3장)
   hooks/hooks.json                ← { "modules": ["./register.tsx"] }
   hooks/register.tsx              ← 모드 본체 (부록 A.4)
   types/index.d.ts                ← $.state 계약 (부록 A.3)
-  sounds/decision.wav
-  sounds/error.wav
-  sounds/done.wav
+  tests/ui.test.tsx               ← claude plugin test
   tsconfig.json                   ← 편집기·tsc용 (부록 A.5)
   .gitignore
   LICENSE                         ← MIT, 원작자 표기 포함 (11장)
@@ -50,11 +48,6 @@ node_modules/
 *.log
 ```
 `.claude-plugin/types/`는 엔진이 모드를 로드할 때마다 자동으로 쓰는 타입 폴더다. 커밋하지 않는다.
-
-**사운드**: 원본 MIT 저장소의 wav를 그대로 쓰거나 직접 만든 wav(짧은 44.1 kHz 16-bit)로 교체한다.
-```bash
-cp ~/Github/claude-mods/plugins/plan-progress/sounds/*.wav sounds/
-```
 
 ---
 
@@ -119,7 +112,7 @@ CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude -p "Run ls once, then reply in one se
 | 키 | 타입 | 용도 |
 | --- | --- | --- |
 | `bars` | `TurnBar[]` | 그릴 바 목록. 기본 `MAX_BARS = 1`이라 현재 턴 하나 |
-| `isOpen` | `boolean` | 바 표시/숨김 (Progress 버튼, `/turnbar`) |
+| `isOpen` | `boolean` | 바 표시/숨김 (`/turnbar`) |
 | `tick` | `number` | 턴이나 에이전트가 도는 동안 1초마다 증가. 경과 시간을 다시 그리는 용도 |
 
 `TurnBar`의 핵심 필드:
@@ -144,15 +137,15 @@ CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude -p "Run ls once, then reply in one se
 | `turn.start` | 메인 루프만 발생 | `live` 초기화. 새 바 생성. `title`은 빈 프롬프트면 `계속`, 20자 이하 한 줄이면 그대로, 그 외에는 `""`로 두고 `nameTurn`을 기다리지 않고 실행한다(`$.model.complete({ model: "haiku", system: TITLE_SYSTEM, maxTokens: 40, effort: "low", timeoutMs: 10000 })`). 답이 오면 30자로 자르고 끝의 구두점을 지운다. 실패하면 첫 줄 30자를 쓴다. 아직 돌고 있는 백그라운드 에이전트는 새 바로 옮긴다. `isTicking = true` |
 | `turn.step` (스트리밍 제너레이터) | `e.agentId` 없음, `e.turnId === live.turnId` | 청크를 **먼저 `yield`한 뒤** 관찰한다. 규칙은 6장 |
 | `tool.call` | 서브에이전트(`e.agentId`) | 스트립의 `tool` 갱신, `toolUses`에 기록 |
-| `tool.call` | 메인, `AskUserQuestion`/`ExitPlanMode` | 호출 전에 `needs_input`(note `질문`/`플랜 승인`) + decision 사운드, 반환 후 `running` |
+| `tool.call` | 메인, `AskUserQuestion`/`ExitPlanMode` | 호출 전에 `needs_input`(note `질문`/`플랜 승인`), 반환 후 `running` |
 | `tool.call` | 메인, 그 외 | 스트림이 만든 `ToolRun`을 `tool_use_id`로 찾아(없으면 추가) `target`(`targetOf`: 파일 이름, 명령, 패턴, 쿼리)과 `startedAt`을 채우고 flush. 끝나면 `endedAt`과 `isError`(`isError` 또는 `deny`)를 채우고 다시 flush. `pendingMain`에 넣었다 뺀다 |
 | `tool.check` | 판정이 `ask` | 600ms 뒤에도 아직 대기 중이면 메인은 `needs_input`(`승인 대기`), 에이전트는 스트립을 amber로 바꾼다 |
 | `agent.spawn` | | 부모 에이전트의 바, 없으면 현재 턴 바에 스트립 추가. 턴 밖이면 무시 |
-| `turn.complete` | 서브에이전트 | 스트립을 `done`/`error`로. 실패하면 error 사운드 |
-| `turn.complete` | 메인 | `reason`별 상태: `answer`→`done`(frac=1), `aborted`→`stopped`, `error`→`error`(`API 오류`), `refusal`→`error`(`refusal.explanation`). `live = null`, `isTicking = false`. done 사운드는 `durationMs ≥ 20000`일 때만 |
+| `turn.complete` | 서브에이전트 | 스트립을 `done`/`error`로 |
+| `turn.complete` | 메인 | `reason`별 상태: `answer`→`done`(frac=1), `aborted`→`stopped`, `error`→`error`(`API 오류`), `refusal`→`error`(`refusal.explanation`). `live = null`, `isTicking = false`|
 | `ui.render` `AbovePrompt` | 바가 있고, `hasSurvey`가 아니고, `isOpen` | 바 렌더링 (7장) |
-| `ui.render` `SessionMode` | 항상 | 푸터에 Progress 버튼. 바가 없으면 dim, 누르면 토스트 |
-| `command.run` | `/turnbar`, `/turnbar-sounds`, `/turnbar-clear` | 토글, 사운드 3종 재생, 전체 제거 |
+| `ui.render` `SessionMode` | 항상 | 푸터에 `진행` 라벨(글자). 바가 보이면 상태색, 아니면 dim |
+| `command.run` | `/turnbar`, `/turnbar-clear` | 토글, 전체 제거 |
 
 ---
 
@@ -236,7 +229,7 @@ CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude -p "Run ls once, then reply in one se
 
 **접근성**: Svg `alt` = `제목: 라벨, 카운트, 경과시간; agents: …`.
 
-**푸터 라벨**: `SessionMode`에 `Progress`를 버튼이 아닌 **글자(Text)** 로 항상 그리고, 아래 모드들의 라벨(`next(e)`)은 그대로 둔다. 바가 보이는 동안은 최신 턴의 상태색에 굵게, 숨겼거나 바가 없으면 dim이다. 데스크톱의 Button은 `plain`이어도 배경 칩을 그리고, 그 칩이 푸터 줄보다 높아서 글자가 잘렸다. 표시/숨김은 `/turnbar`로 한다.
+**푸터 라벨**: `SessionMode`에 `진행`을 버튼이 아닌 **글자(Text)** 로 항상 그리고, 아래 모드들의 라벨(`next(e)`)은 그대로 둔다. 바가 보이는 동안은 최신 턴의 상태색에 굵게, 숨겼거나 바가 없으면 dim이다. 데스크톱의 Button은 `plain`이어도 배경 칩을 그리고, 그 칩이 푸터 줄보다 높아서 글자가 잘렸다. 표시/숨김은 `/turnbar`로 한다.
 
 **행 오른쪽 버튼**: 시계 뒤에 `✕`(바 닫기) 하나만 둔다. `plain dimColor`. `trackW = clamp(120, total - titleWidth - 144, 1400)`. (타임라인 패널과 `≡` 버튼은 0.1.3에서 뺐다. 쓸 일이 적은데 화면만 복잡하게 만들었다.)
 
@@ -249,15 +242,7 @@ CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude -p "Run ls once, then reply in one se
 
 ## 8. 사운드
 
-`$.audio.play({ asset: 'sounds/<name>.wav' })`를 먼저 시도하고, 실패하면 PowerShell `Media.SoundPlayer`를 쓴다(Windows).
-
-| 사운드 | 언제 |
-| --- | --- |
-| decision | `needs_input`에 처음 들어갈 때 (질문, 플랜 승인, 600ms 넘게 걸린 권한 대기) |
-| error | 메인 턴이 error로 끝날 때, 서브에이전트가 실패할 때 |
-| done | 메인 턴이 `answer`로 끝나고 `durationMs ≥ 20000`일 때 |
-
----
+없다. 0.1.5에서 wav 파일과 재생 코드, `/turnbar-sounds`를 모두 뺐다. 쓰는 사람이 소리를 꺼 두고 있었다.
 
 ## 9. 엣지 케이스
 
@@ -274,20 +259,20 @@ CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude -p "Run ls once, then reply in one se
 ## 10. 수동 확인 시나리오
 
 1. 도구를 몇 번 쓰는 요청: 틱이 찍히고, 끝난 뒤 틱에 마우스를 올리면 툴팁이 나온다. 세 줄 높이가 같고, 라이트와 다크 모두 글자가 읽혀야 한다.
-2. "안녕"처럼 짧은 질문: 생각 → 답변으로 바로 점프하고(작업 구간 건너뜀) `완료`, 사운드 없음.
-3. 파일 몇 개를 고치는 요청: 0.25 이후에 도구 틱이 늘고, pill이 `작업 중 2/3`으로 바뀌며, 끝나면 `완료 3/3`. 긴 프롬프트는 1초 안에 `…`이 요약 제목으로 바뀐다. 20초가 넘으면 done 사운드.
-4. 권한이 필요한 Bash: 600ms 뒤 amber `승인 대기` + decision 사운드. 승인하면 보라색으로 돌아온다.
+2. "안녕"처럼 짧은 질문: 생각 → 답변으로 바로 점프하고(작업 구간 건너뜀) `완료`.
+3. 파일 몇 개를 고치는 요청: 0.25 이후에 도구 틱이 늘고, pill이 `작업 중 2/3`으로 바뀌며, 끝나면 `완료 3/3`. 긴 프롬프트는 1초 안에 `…`이 요약 제목으로 바뀐다.
+4. 권한이 필요한 Bash: 600ms 뒤 amber `승인 대기`. 승인하면 보라색으로 돌아온다.
 5. Esc로 중단: 회색 `중단됨`, 채움은 그 자리에서 멈춘다.
 6. Agent 도구 2개 병렬: 스트립 2개, 완료 후 5초 뒤 접힘.
 7. 창을 좁히기(`W < 360`): 원형 노브에 구간 번호.
 8. 터미널(`claude --plugin-dir .`): 텍스트 바 폴백.
-9. Progress 버튼과 `/turnbar`: 숨김/표시 토글.
+9. 푸터 `진행` 라벨과 `/turnbar`: 숨김/표시 토글.
 
 ---
 
 ## 11. 라이선스
 
-부록 A의 그리기 코드(`trackSvg`, `stripsSvg`, 레이아웃, 사운드 재생)는 MIT 라이선스인 `plan-progress`(Copyright (c) 2026 Kirill Serditov)에서 가져와 고친 것이다. 새 저장소의 `LICENSE`에 원저작권 표기를 남긴다.
+부록 A의 그리기 코드(`trackSvg`, `stripsSvg`, 레이아웃)는 MIT 라이선스인 `plan-progress`(Copyright (c) 2026 Kirill Serditov)에서 가져와 고친 것이다. 새 저장소의 `LICENSE`에 원저작권 표기를 남긴다.
 ```
 MIT License
 
@@ -296,13 +281,12 @@ Portions derived from plan-progress, Copyright (c) 2026 Kirill Serditov
 
 (이하 표준 MIT 본문)
 ```
-원본에서 복사한 wav를 쓴다면 README에도 출처를 한 줄 적는다.
 
 ---
 
 ## 12. 다음 단계 아이디어 (선택)
 
-- `userConfig`로 `doneSoundMinMs`, `answerMinChars`, `maxBars`를 노출한다(설정 메뉴에 행이 생기고, 바꾸면 모듈이 재로드된다).
+- `userConfig`로 `answerMinChars`, `maxBars`를 노출한다(설정 메뉴에 행이 생기고, 바꾸면 모듈이 재로드된다).
 - 세션 누적 토큰/비용을 작은 그래프(`Raster`)로 그리기 (`tokens`는 이미 턴마다 저장 중).
 - 최근 N턴 히스토리: `MAX_BARS`를 키우고 완료된 바를 dim 처리.
 
@@ -407,7 +391,6 @@ const STRIP_GAP = 3
 const MAX_STRIPS = 4 // past this, the finished ones fold into one "+N more" strip
 const FOLD_MS = 5000 // finished strips stay this long, failed ones stay until the bar goes
 const ASK_DELAY_MS = 600 // a permission ask still open after this waits on the person
-const DONE_SOUND_MIN_MS = 20_000 // a short turn finishes quietly
 const ANSWER_MIN_CHARS = 280 // this much text in a step with no tool call reads as the final answer
 // while text or thinking streams, the bar is written at most this often: every write is a new picture,
 // and a picture swapped many times a second restarts its animations and reads as flicker
@@ -433,11 +416,12 @@ const LABEL = {
   stopped: '중단됨',
   done: '완료',
   untitled: '계속',
+  agentsAlt: '에이전트',
   agentStarting: '시작 중',
   agentDone: '완료',
   agentFailed: '실패',
   agentStopped: '중단됨',
-  button: 'Progress',
+  button: '진행',
   calls: '도구 호출',
   running: '실행 중',
   writing: '준비 중',
@@ -832,30 +816,6 @@ function stripsSvg(v: { shown: AgentRun[]; hidden: AgentRun[] }, W: number, now:
 
 // ---------- engine glue ----------
 
-// the engine's player first (afplay on macOS); PowerShell where it cannot play
-function play($: EngineInterface, name: 'decision' | 'error' | 'done') {
-  const file = `${$.plugin.root}/sounds/${name}.wav`.replace(/\//g, '\\')
-  void $.audio
-    .play({ asset: `sounds/${name}.wav` })
-    .catch(() =>
-      $.process
-        .run(
-          [
-            'powershell',
-            '-NoLogo',
-            '-NoProfile',
-            '-NonInteractive',
-            '-ExecutionPolicy',
-            'Bypass',
-            '-Command',
-            `(New-Object Media.SoundPlayer '${file}').PlaySync()`,
-          ],
-          { timeoutMs: 5000 },
-        )
-        .catch(() => undefined),
-    )
-}
-
 const isLive = (b: TurnBar) => b.state === 'running' || b.state === 'needs_input'
 // an interactive Svg (tooltips) is a frame that reloads on every redraw, so a bar that still redraws every
 // second would flicker; it turns interactive only once nothing on it moves any more
@@ -903,20 +863,17 @@ async function flush($: EngineInterface) {
   )
 }
 
-// needs_input on and off for the live turn; the sound plays once, on the way in
+// needs_input on and off for the live turn
 async function setWaiting($: EngineInterface, isWaiting: boolean, note: string | null) {
   const l = live
   const id = l?.turnId
   if (!l || !id) return
-  let isEntered = false
   await update($, bars, list =>
     list.map(b => {
       if (b.id !== id || b.state !== (isWaiting ? 'running' : 'needs_input')) return b
-      isEntered = isWaiting
       return { ...b, state: isWaiting ? ('needs_input' as const) : ('running' as const), note: isWaiting ? note : null }
     }),
   )
-  if (isEntered) play($, 'decision')
 }
 
 function syncAgents(b: TurnBar, now: number): TurnBar {
@@ -960,9 +917,8 @@ export const register: Register = on => {
     $.clock.every(1000, async () => {
       if (isTicking || agentHome.size > 0 || (await $.clock.now()) < foldUntil) await update($, tick, n => n + 1)
     })
-    await $.command.register({ name: 'turnbar', description: 'Show or hide the turn progress bar' })
-    await $.command.register({ name: 'turnbar-sounds', description: 'Play the decision, error and done sounds' })
-    await $.command.register({ name: 'turnbar-clear', description: 'Remove the turn progress bar' })
+    await $.command.register({ name: 'turnbar', description: '턴 진행 바 보이기/숨기기' })
+    await $.command.register({ name: 'turnbar-clear', description: '턴 진행 바 지우기' })
 
     return next(e)
   })
@@ -1158,7 +1114,6 @@ export const register: Register = on => {
         const isFailed = e.reason !== 'answer'
         const tool = e.reason === 'aborted' ? LABEL.agentStopped : isFailed ? LABEL.agentFailed : LABEL.agentDone
         await editAgent($, agentId, a => ({ ...a, state: isFailed ? 'error' : 'done', tool, endedAt: now }))
-        if (isFailed) play($, 'error')
         agentHome.delete(agentId)
         waiting.delete(agentId)
       }
@@ -1195,26 +1150,16 @@ export const register: Register = on => {
               },
       ),
     )
-    if (state === 'done' && e.durationMs >= DONE_SOUND_MIN_MS) play($, 'done')
-    if (state === 'error') play($, 'error')
 
     return next(e)
   })
 
   on('command.run', { command: 'turnbar' }, async $ => {
-    if ((await read($, bars)).length === 0) return { text: 'No bar yet: one appears with the next request.' }
+    if ((await read($, bars)).length === 0) return { text: '아직 바가 없습니다. 다음 요청부터 나타납니다.' }
     const open = await read($, isOpen)
     await update($, isOpen, () => !open)
 
-    return { text: open ? 'Turn bar hidden.' : 'Turn bar shown.' }
-  })
-
-  on('command.run', { command: 'turnbar-sounds' }, async $ => {
-    play($, 'decision')
-    $.clock.after(900, () => play($, 'error'))
-    $.clock.after(1800, () => play($, 'done'))
-
-    return { text: 'Sounds: decision, error, done.' }
+    return { text: open ? '진행 바를 숨겼습니다.' : '진행 바를 다시 표시합니다.' }
   })
 
   on('command.run', { command: 'turnbar-clear' }, async $ => {
@@ -1222,7 +1167,7 @@ export const register: Register = on => {
     lastStrip.clear()
     await update($, bars, () => [])
 
-    return { text: 'Turn bar removed.' }
+    return { text: '진행 바를 지웠습니다.' }
   })
 
   // always drawn, so the person sees the mod is loaded: plain text, since a Button's chip is taller than the footer
@@ -1283,7 +1228,7 @@ export const register: Register = on => {
           const color = STATE_COLOR[b.state]
           const time = clockText((b.endedAt ?? now) - b.startedAt)
           const count = pillCount(b)
-          const agentsAlt = v ? `; agents: ${(b.agents ?? []).map(a => `${a.title} ${a.state}`).join(', ')}` : ''
+          const agentsAlt = v ? `; ${LABEL.agentsAlt}: ${(b.agents ?? []).map(a => `${a.title} ${a.tool}`).join(', ')}` : ''
           const alt = `${b.title}: ${pillName(b)}${count ? `, ${count}` : ''}, ${time}${agentsAlt}`
           const frac = b.state === 'done' ? 1 : Math.min(1, Math.max(0, b.frac))
           const pct = Math.round(frac * 100)
