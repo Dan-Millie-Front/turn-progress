@@ -92,7 +92,7 @@ ln -s ~/Github/turn-progress ~/.claude/skills/turn-progress
 ```
 새 버전을 낼 때는 `plugin.json`의 `version`을 올리고 push한다. 받는 쪽은 `/plugin marketplace update millie-mods`로 갱신한다.
 
-**검증 루프** (`tests/ui.test.tsx`는 턴 하나를 흉내 낸다. `$.turn.start` → Bash `$.tool.call` → `$.turn.complete` 순서로 이벤트를 일으킨 뒤, 바, 푸터 라벨, 타임라인 패널을 터미널과 데스크톱 두 화면에 띄워 앱이 거부할 트리가 없는지와 제목, 호출 설명, 토큰이 그려졌는지 확인한다. 테스트 쪽 `on`이 엔진 대신 `turn.start`, `turn.complete`, `tool.call`, `ui.render`에 답하고, 시계는 `mock.clock`이다)
+**검증 루프** (`tests/ui.test.tsx`는 턴 하나를 흉내 낸다. `$.turn.start` → Bash `$.tool.call` → `$.turn.complete` 순서로 이벤트를 일으킨 뒤, 바와 푸터 라벨을 터미널과 데스크톱 두 화면에 띄워 앱이 거부할 트리가 없는지와 제목, 터미널의 블록 바와 퍼센트가 그려졌는지 확인한다. 테스트 쪽 `on`이 엔진 대신 `turn.start`, `turn.complete`, `tool.call`, `ui.render`에 답하고, 시계는 `mock.clock`이다)
 ```bash
 claude plugin test .
 ```
@@ -126,12 +126,11 @@ CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude -p "Run ls once, then reply in one se
 - `phase`: 지금까지 도달한 가장 먼 구간(`request`→`thinking`→`working`→`answering`). **뒤로 가지 않는다.**
 - `activity`: 지금 하는 일. pill 라벨에 쓰고, 뒤로 갈 수 있다(작업 중에 다시 생각하면 `생각 중`).
 - `frac`: 0..1 채움. `Math.max(이전, 새 값)`으로만 갱신한다.
-- `calls`: 메인 루프의 도구 호출(`ToolRun`: 이름, 대상, 틱 위치 `frac`, 시작·끝 시각, 실패 여부). 최대 60개. 트랙의 틱과 타임라인의 행이 여기서 나온다.
-- `spans`: 턴 시간을 무엇에 썼는지(`thinking`/`working`/`answering`/`waiting`)의 구간 목록. 최대 80개.
+- `calls`: 메인 루프의 도구 호출(`ToolRun`: 이름, 대상, 틱 위치 `frac`, 시작·끝 시각, 실패 여부). 최대 60개. 트랙의 틱과 그 툴팁이 여기서 나온다.
 - `tokens`: `turn.complete`의 사용량(입력, 출력, 캐시 읽기·쓰기).
 
 모듈 변수(핫리로드되면 사라져도 되는 값):
-- `live`: 현재 턴의 카운터(`thinkChars`, `stepText`, `answerChars`, `tools`, `calls`, `spans`, `phase`, `activity`). 스트림 청크마다 여기만 갱신하고, 가끔씩 `bars`로 내보낸다(flush).
+- `live`: 현재 턴의 카운터(`thinkChars`, `stepText`, `answerChars`, `tools`, `calls`, `phase`, `activity`). 스트림 청크마다 여기만 갱신하고, 가끔씩 `bars`로 내보낸다(flush).
 - `pendingMain`, `waitingMain`: 메인 루프의 진행 중인 tool_use_id와, 그중 권한 대기 중인 것.
 - `agentHome`, `toolUses`, `waiting`, `foldUntil`: 에이전트 스트립용. plan-progress와 동일하다.
 
@@ -153,8 +152,7 @@ CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude -p "Run ls once, then reply in one se
 | `turn.complete` | 메인 | `reason`별 상태: `answer`→`done`(frac=1), `aborted`→`stopped`, `error`→`error`(`API 오류`), `refusal`→`error`(`refusal.explanation`). `live = null`, `isTicking = false`. done 사운드는 `durationMs ≥ 20000`일 때만 |
 | `ui.render` `AbovePrompt` | 바가 있고, `hasSurvey`가 아니고, `isOpen` | 바 렌더링 (7장) |
 | `ui.render` `SessionMode` | 항상 | 푸터에 Progress 버튼. 바가 없으면 dim, 누르면 토스트 |
-| `command.run` | `/turnbar`, `/turnbar-sounds`, `/turnbar-clear`, `/turnbar-timeline` | 토글, 사운드 3종 재생, 전체 제거, 타임라인 패널 열기 |
-| `ui.render` `Pane` `turn-timeline` | 패널이 열렸을 때 | 최신 턴의 타임라인 (7.2) |
+| `command.run` | `/turnbar`, `/turnbar-sounds`, `/turnbar-clear` | 토글, 사운드 3종 재생, 전체 제거 |
 
 ---
 
@@ -175,7 +173,7 @@ CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude -p "Run ls once, then reply in one se
 **청크 규칙** (`turn.step`, 스텝마다 `stepText = 0`, `isStepTool = false`로 시작):
 - `thinking`: `thinkChars += len`, `advance('thinking')`, `activity = 생각 중`. activity가 바뀐 순간 즉시 flush.
 - `text`: `stepText += len`. **이 스텝에 도구 청크가 없고 `stepText ≥ 280`(`ANSWER_MIN_CHARS`)이면** 최종 답변으로 보고 `advance('answering')`, `answerChars = stepText`, `activity = 답변 작성`. 도구 전에 나오는 짧은 중간 멘트("확인해볼게요…")가 답변 구간으로 넘어가지 않게 하는 휴리스틱이다.
-- `tool`: `isStepTool = true`, `tools++`, `advance('working')`, `activity = 작업 중`, `markSpan('working')`, `calls`에 `{ id: c.id, name, target: '', frac: fracOf, startedAt: null }`를 추가, 즉시 flush. thinking과 answering으로 바뀌는 순간에도 `markSpan`을 부른다(바뀔 때만 `$.clock.now()`).
+- `tool`: `isStepTool = true`, `tools++`, `advance('working')`, `activity = 작업 중`, `calls`에 `{ id: c.id, name, target: '', frac: fracOf, startedAt: null }`를 추가, 즉시 flush.
 - `stop`: 즉시 flush.
 - 나머지 청크는 8개(`CLOCK_EVERY`)마다 시계를 보고, 마지막 flush 뒤 800ms(`FLUSH_MS`)가 지났을 때만 flush한다. 쓰기 한 번이 새 그림 한 장이라, 1초에 여러 번 그림을 바꾸면 픽셀 애니메이션이 매번 처음부터 다시 돌아 깜빡임으로 보인다.
 - 채움 위치(`fx`)는 3px 픽셀 격자에 맞춰 반올림한다. 아주 작은 변화로는 그림이 바뀌지 않는다.
@@ -227,7 +225,7 @@ CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude -p "Run ls once, then reply in one se
 
 **터미널** (`e.surface === 'terminal'`일 때. 터미널의 요소 표에도 `Svg`가 있지만 **아무것도 그리지 않는 빈 상자**라서, 요소 표에 `Svg`가 있는지가 아니라 surface로 판단해야 한다. 이걸 놓치면 터미널에서 바가 통째로 사라진다):
 ```
-● 타입 검사 돌려줘    ▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░  42% 작업 중 2/3   18s ≡ ✕
+● 타입 검사 돌려줘    ▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░  42% 작업 중 2/3   18s ✕
   └ Find call sites                                  Done          29s
   └ Check migrations                                 Grep          52s
 ```
@@ -240,7 +238,7 @@ CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude -p "Run ls once, then reply in one se
 
 **푸터 라벨**: `SessionMode`에 `Progress`를 버튼이 아닌 **글자(Text)** 로 항상 그리고, 아래 모드들의 라벨(`next(e)`)은 그대로 둔다. 바가 보이는 동안은 최신 턴의 상태색에 굵게, 숨겼거나 바가 없으면 dim이다. 데스크톱의 Button은 `plain`이어도 배경 칩을 그리고, 그 칩이 푸터 줄보다 높아서 글자가 잘렸다. 표시/숨김은 `/turnbar`로 한다.
 
-**행 오른쪽 버튼**: 시계 뒤에 `≡`(타임라인 패널 열기)와 `✕`(바 닫기)를 둔다. 둘 다 `plain dimColor`. `trackW = clamp(120, total - titleWidth - 164, 1400)`.
+**행 오른쪽 버튼**: 시계 뒤에 `✕`(바 닫기) 하나만 둔다. `plain dimColor`. `trackW = clamp(120, total - titleWidth - 144, 1400)`. (타임라인 패널과 `≡` 버튼은 0.1.3에서 뺐다. 쓸 일이 적은데 화면만 복잡하게 만들었다.)
 
 ### 7.1 툴팁 (Svg `isInteractive`)
 
@@ -248,32 +246,6 @@ CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude -p "Run ls once, then reply in one se
 - 틱마다 폭 8px짜리 투명 사각형을 겹치고 그 안에 `<title>`을 넣는다: `Edit · register.tsx · 0.8s`. 실행 중이면 `실행 중 3.2s`, 모델이 아직 호출을 쓰는 중이면 `준비 중`, 실패하면 `· 실패`가 붙고 틱이 빨간색이 된다.
 - pill 그룹의 `<title>`: `6 도구 호출 · 토큰 입력 125k (캐시 94%) · 출력 3.1k`. 토큰은 턴이 끝난 뒤에만 나온다.
 - 길이 표기: 10초 미만은 `0.8s`처럼 소수 한 자리, 그 이상은 `m:ss`.
-
-### 7.2 타임라인 패널
-
-`≡` 버튼이나 `/turnbar-timeline`으로 `$.ui.open({ id: 'turn-timeline', title: '턴 타임라인' })`을 연다. 사람이 연 패널이라 어떤 폭에서든 자리를 잡는다. 패널은 `bars`의 마지막 바를 그리고, 턴이 진행되는 동안 계속 갱신된다.
-패널은 그림 대신 **글자 행**으로 그리고, 그림은 단계 비율 막대 하나만 쓴다.
-```
-● 깜빡임 원인 확인                     생각 중  37s
-[■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■]     ← 단계 비율 막대 (높이 10, 둥근 끝)
-● 생각 18s   ● 작업 14s   ● 대기 0.4s   ● 답변 5s   ← 범례 겸 합계
-
-도구 호출 2
-+0:21  Bash  깜빡임 관련 코드 찾기                1.0s
-+0:28  Bash  플러시 루프 읽기                     0.6s
-↳ 에이전트  Check migrations                    52s
-토큰 입력 125k (캐시 94%) · 출력 3.1k
-```
-- 머리 줄: 상태 글리프, 제목(굵게, truncate), 오른쪽에 상태 라벨(상태색)과 경과 시간.
-- 단계 막대(`phaseBarSvg`): `spans`를 시간 순서대로 칠한다. 색은 생각 `#B4A9F9`, 작업 `#8B7CF6`, 대기 `#E09A1E`, 답변 `#30A46C`이고, 칸마다 `<title>`이 있다. 터미널에서는 같은 색의 `━` 40칸으로 그린다.
-- 범례: 실제로 시간을 쓴 종류만 `● 생각 18s` 형태로 보여준다(`spanTotals`).
-- 호출 행: `+시작 시점`(턴 시작 기준, 5칸 고정), 도구 이름(진행색, 실패는 빨강), 대상(dim), 오른쪽에 길이. 대상과 머리 줄의 제목은 `flexGrow 1 · flexShrink 1` Box 안의 `wrap="truncate"` Text라서, 길면 앱이 실제 폭으로 잘라 `…`을 붙인다. 시작 시점, 도구 이름, 길이는 밀리지 않는다. 실행 중이면 `실행 중 3.2s`, 실패면 `실패 0.4s`. **턴의 20% 이상이자 2초 이상 걸린 호출은 대상과 길이를 굵게** 표시해서 시간이 어디서 갔는지 바로 보이게 한다.
-- 에이전트 행: `↳ 에이전트  제목  길이`, 상태색.
-- 대상(`targetOf`)은 파일이면 이름만, 그 외에는 **호출의 `description`을 명령보다 먼저** 쓴다(Bash, Agent). 날것의 명령보다 읽기 쉽다.
-- 토큰 줄은 턴이 끝나 사용량이 있을 때만 보인다.
-
-
----
 
 ## 8. 사운드
 
@@ -301,7 +273,7 @@ CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude -p "Run ls once, then reply in one se
 
 ## 10. 수동 확인 시나리오
 
-1. 도구를 몇 번 쓰는 요청: 틱이 찍히고, 끝난 뒤 틱에 마우스를 올리면 툴팁이 나온다. `≡`을 누르면 타임라인 패널이 열린다. 세 줄 높이가 같고, 라이트와 다크 모두 글자가 읽혀야 한다.
+1. 도구를 몇 번 쓰는 요청: 틱이 찍히고, 끝난 뒤 틱에 마우스를 올리면 툴팁이 나온다. 세 줄 높이가 같고, 라이트와 다크 모두 글자가 읽혀야 한다.
 2. "안녕"처럼 짧은 질문: 생각 → 답변으로 바로 점프하고(작업 구간 건너뜀) `완료`, 사운드 없음.
 3. 파일 몇 개를 고치는 요청: 0.25 이후에 도구 틱이 늘고, pill이 `작업 중 2/3`으로 바뀌며, 끝나면 `완료 3/3`. 긴 프롬프트는 1초 안에 `…`이 요약 제목으로 바뀐다. 20초가 넘으면 done 사운드.
 4. 권한이 필요한 Bash: 600ms 뒤 amber `승인 대기` + decision 사운드. 승인하면 보라색으로 돌아온다.
@@ -373,7 +345,7 @@ export type AgentRun = {
   endedAt: number | null
   depth: number
 }
-// one tool call of the main loop: a tick on the track, a row in the timeline
+// one tool call of the main loop: a tick on the track with its tooltip
 export type ToolRun = {
   id: string // tool_use_id
   name: string
@@ -383,9 +355,6 @@ export type ToolRun = {
   endedAt: number | null
   isError: boolean
 }
-// a stretch of the turn spent on one thing, for the timeline's top lane
-export type SpanKind = 'thinking' | 'working' | 'answering' | 'waiting'
-export type Span = { kind: SpanKind; start: number; end: number | null }
 // what the turn cost, as turn.complete reports it
 export type TurnTokens = { input: number; output: number; cacheRead: number; cacheWrite: number }
 export type TurnBar = {
@@ -396,7 +365,6 @@ export type TurnBar = {
   state: TurnState
   frac: number // 0..1, the fill
   calls: ToolRun[]
-  spans: Span[]
   note: string | null
   startedAt: number
   endedAt: number | null
@@ -424,15 +392,13 @@ declare module 'claude-code' {
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { AgentRun, Phase, Span, SpanKind, ToolRun, TurnBar, TurnState } from '../types'
+import type { AgentRun, Phase, ToolRun, TurnBar, TurnState } from '../types'
 
 const bars = atom({ plugin: 'turn-progress', key: 'bars' } as const, [])
 const isOpen = atom({ plugin: 'turn-progress', key: 'isOpen' } as const, true)
 const tick = atom({ plugin: 'turn-progress', key: 'tick' } as const, 0)
 
 const MAX_BARS = 1 // the current turn; a new turn replaces the finished one
-// a space as wide as a digit, so " 9s" and "1:05" take the same room (4 cells: up to 9:59 without a shift)
-const FIGURE_SPACE = String.fromCharCode(0x2007)
 const TRACK_H = 18 // the same height as an agent strip, so the rows read as one stack
 const PX_ROWS = 5 // pixel rows inside the track: 3px pitch, centred
 const NARROW = 360
@@ -447,9 +413,7 @@ const ANSWER_MIN_CHARS = 280 // this much text in a step with no tool call reads
 // and a picture swapped many times a second restarts its animations and reads as flicker
 const FLUSH_MS = 800
 const CLOCK_EVERY = 8 // streamed chunks between looks at the clock
-const MAX_CALLS = 60 // tool calls kept per turn: ticks on the track, rows in the timeline
-const MAX_SPANS = 80
-const PANE = 'turn-timeline'
+const MAX_CALLS = 60 // tool calls kept per turn: one tick each on the track
 
 const STATE_COLOR: Record<TurnState, string> = { running: '#8B7CF6', needs_input: '#E09A1E', error: '#E5484D', stopped: '#8A8984', done: '#30A46C' }
 const STATE_GLYPH: Record<TurnState, string> = { running: '●', needs_input: '?', error: '!', stopped: '■', done: '✓' }
@@ -471,10 +435,6 @@ const LABEL = {
   untitled: '계속',
   agents: '에이전트',
   button: 'Progress',
-  timeline: '턴 타임라인',
-  timelineButton: '≡',
-  noTurn: '아직 기록된 턴이 없습니다.',
-  lane: '단계',
   calls: '도구 호출',
   running: '실행 중',
   writing: '준비 중',
@@ -501,7 +461,6 @@ type Live = {
   answerChars: number
   tools: number
   calls: ToolRun[]
-  spans: Span[]
 }
 
 function fracOf(l: Live): number {
@@ -521,15 +480,6 @@ function fracOf(l: Live): number {
 // the fill only moves forward: thinking after a tool call changes the label, not the phase
 const advance = (l: Live, to: Phase) => {
   if (ORDER.indexOf(to) > ORDER.indexOf(l.phase)) l.phase = to
-}
-
-// a new stretch of the turn starts; the open one ends where it begins
-function markSpan(l: Live, kind: SpanKind, now: number) {
-  const last = l.spans[l.spans.length - 1]
-  if (last && last.end === null && last.kind === kind) return
-  if (last && last.end === null) last.end = now
-  l.spans.push({ kind, start: now, end: null })
-  if (l.spans.length > MAX_SPANS) l.spans.shift()
 }
 
 // what a call works on, in a few words: a file's name, a command, a pattern or query
@@ -880,40 +830,6 @@ function stripsSvg(v: { shown: AgentRun[]; hidden: AgentRun[] }, W: number, now:
 @media (prefers-reduced-motion:reduce){.sd,.mi,.mo{animation:none}.mo{opacity:0}}</style>${rows.join('')}`
 }
 
-const SPAN_COLOR: Record<SpanKind, string> = {
-  thinking: '#B4A9F9',
-  working: STATE_COLOR.running,
-  waiting: STATE_COLOR.needs_input,
-  answering: STATE_COLOR.done,
-}
-const SPAN_LABEL: Record<SpanKind, string> = { thinking: LABEL.thinking, working: LABEL.working, waiting: LABEL.needs_input, answering: LABEL.answering }
-const SPAN_SHORT: Record<SpanKind, string> = { thinking: '생각', working: '작업', waiting: '대기', answering: '답변' }
-const SPAN_KINDS: SpanKind[] = ['thinking', 'working', 'waiting', 'answering']
-const PHASE_BAR_H = 10
-
-// how long the turn spent on each kind of stretch
-function spanTotals(b: TurnBar, now: number): Record<SpanKind, number> {
-  const sum: Record<SpanKind, number> = { thinking: 0, working: 0, waiting: 0, answering: 0 }
-  for (const sp of b.spans) sum[sp.kind] += Math.max(0, (sp.end ?? now) - sp.start)
-  return sum
-}
-
-// the turn as one bar: each stretch in its colour, in order, across the whole width; a gap is time not yet in a stretch
-function phaseBarSvg(b: TurnBar, W: number, now: number): string {
-  const t0 = b.startedAt
-  const total = Math.max(1000, (b.endedAt ?? now) - t0)
-  const x = (t: number) => ((Math.min(Math.max(t, t0), t0 + total) - t0) / total) * W
-  const segs = b.spans
-    .map(sp => {
-      const x1 = x(sp.start)
-      const w = Math.max(1.5, x(sp.end ?? now) - x1)
-      return `<rect x="${x1.toFixed(1)}" y="0" width="${w.toFixed(1)}" height="${PHASE_BAR_H}" fill="${SPAN_COLOR[sp.kind]}"><title>${esc(`${SPAN_LABEL[sp.kind]} · ${durationText((sp.end ?? now) - sp.start)}`)}</title></rect>`
-    })
-    .join('')
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${PHASE_BAR_H}" viewBox="0 0 ${W} ${PHASE_BAR_H}"><defs><clipPath id="r"><rect width="${W}" height="${PHASE_BAR_H}" rx="${PHASE_BAR_H / 2}"/></clipPath></defs><g clip-path="url(#r)"><rect width="${W}" height="${PHASE_BAR_H}" fill="#808080" fill-opacity=".14"/>${segs}</g></svg>`
-}
-
 // ---------- engine glue ----------
 
 // the engine's player first (afplay on macOS); PowerShell where it cannot play
@@ -982,7 +898,6 @@ async function flush($: EngineInterface) {
             activity: l.activity,
             frac: Math.max(b.frac, frac),
             calls: l.calls.map(c => ({ ...c })),
-            spans: l.spans.map(sp => ({ ...sp })),
           },
     ),
   )
@@ -993,9 +908,6 @@ async function setWaiting($: EngineInterface, isWaiting: boolean, note: string |
   const l = live
   const id = l?.turnId
   if (!l || !id) return
-  // the wait is a stretch of its own on the timeline; waits happen around tool calls, so work resumes after
-  markSpan(l, isWaiting ? 'waiting' : 'working', await $.clock.now())
-  await flush($)
   let isEntered = false
   await update($, bars, list =>
     list.map(b => {
@@ -1051,7 +963,6 @@ export const register: Register = on => {
     await $.command.register({ name: 'turnbar', description: 'Show or hide the turn progress bar' })
     await $.command.register({ name: 'turnbar-sounds', description: 'Play the decision, error and done sounds' })
     await $.command.register({ name: 'turnbar-clear', description: 'Remove the turn progress bar' })
-    await $.command.register({ name: 'turnbar-timeline', description: 'Open the timeline of the latest turn' })
 
     return next(e)
   })
@@ -1073,7 +984,6 @@ export const register: Register = on => {
       answerChars: 0,
       tools: 0,
       calls: [],
-      spans: [],
     }
     const bar: TurnBar = {
       id: e.turnId,
@@ -1083,7 +993,6 @@ export const register: Register = on => {
       state: 'running',
       frac: 0,
       calls: [],
-      spans: [],
       note: null,
       startedAt: now,
       endedAt: null,
@@ -1119,19 +1028,13 @@ export const register: Register = on => {
       let isNow = false
       if (c.kind === 'thinking') {
         l.thinkChars += c.text.length
-        if (l.activity !== LABEL.thinking) {
-          isNow = true
-          markSpan(l, 'thinking', await $.clock.now())
-        }
+        isNow = l.activity !== LABEL.thinking
         advance(l, 'thinking')
         l.activity = LABEL.thinking
       } else if (c.kind === 'text') {
         l.stepText += c.text.length
         if (!l.isStepTool && l.stepText >= ANSWER_MIN_CHARS) {
-          if (l.activity !== LABEL.answering) {
-            isNow = true
-            markSpan(l, 'answering', await $.clock.now())
-          }
+          isNow = l.activity !== LABEL.answering
           advance(l, 'answering')
           if (l.phase === 'answering') l.answerChars = l.stepText
           l.activity = LABEL.answering
@@ -1141,7 +1044,6 @@ export const register: Register = on => {
         l.tools += 1
         advance(l, 'working')
         l.activity = LABEL.working
-        markSpan(l, 'working', await $.clock.now())
         l.calls = [...l.calls, { id: c.id, name: c.name, target: '', frac: fracOf(l), startedAt: null, endedAt: null, isError: false }].slice(-MAX_CALLS)
         isNow = true
       } else if (c.kind === 'stop') {
@@ -1269,8 +1171,6 @@ export const register: Register = on => {
     pendingMain.clear()
     waitingMain.clear()
     const now = await $.clock.now()
-    const lastSpan = l.spans[l.spans.length - 1]
-    if (lastSpan && lastSpan.end === null) lastSpan.end = now
     for (const c of l.calls) if (c.startedAt !== null && c.endedAt === null) c.endedAt = now
     const u = e.usage
     const tokens = u
@@ -1292,8 +1192,7 @@ export const register: Register = on => {
               endedAt: now,
               tokens,
               calls: l.calls.map(c => ({ ...c })),
-              spans: l.spans.map(sp => ({ ...sp })),
-            },
+              },
       ),
     )
     if (state === 'done' && e.durationMs >= DONE_SOUND_MIN_MS) play($, 'done')
@@ -1308,12 +1207,6 @@ export const register: Register = on => {
     await update($, isOpen, () => !open)
 
     return { text: open ? 'Turn bar hidden.' : 'Turn bar shown.' }
-  })
-
-  on('command.run', { command: 'turnbar-timeline' }, async $ => {
-    await $.ui.open({ id: PANE, title: LABEL.timeline })
-
-    return { text: `${LABEL.timeline}을 열었습니다.` }
   })
 
   on('command.run', { command: 'turnbar-sounds' }, async $ => {
@@ -1362,17 +1255,17 @@ export const register: Register = on => {
     const total = Math.max(320, (e.props.bodyColumns || 100) * 8)
     // a fixed title column, so the track does not move when a title arrives; every bar is pinned to the right edge
     // (fixed-width clock, close button) and the rows line up.
-    // Desktop reports ~8 CSS px per column; glyph, gaps, clock and the timeline and close buttons take ~164 px.
+    // Desktop reports ~8 CSS px per column; glyph, gaps, clock and the close button take ~144 px.
     const titleWidth = Math.round(Math.max(120, Math.min(220, total * 0.22)))
-    const trackW = Math.max(120, Math.min(1400, total - titleWidth - 164))
+    const trackW = Math.max(120, Math.min(1400, total - titleWidth - 144))
     await read($, tick)
     const now = await $.clock.now()
     // the terminal: every part has a width counted in cells, so nothing is squeezed out of a narrow row.
     // The engine keeps a few cells on the right for its own collapse mark.
     const cols = Math.max(30, (e.props.bodyColumns || 80) - 4)
     const labelCells = Math.max(...list.map(b => cells(`${pillName(b)} ${pillCount(b)}`)), 9)
-    // glyph, percent, label, clock, two buttons and the gaps between the eight parts
-    const fixedCells = 1 + 4 + labelCells + 4 + 1 + 1 + 7
+    // glyph, percent, label, clock, the close button and the gaps between the seven parts
+    const fixedCells = 1 + 4 + labelCells + 4 + 1 + 6
     const titleCells = cols - fixedCells >= 30 ? Math.min(20, Math.max(...list.map(b => cells(b.title || '…')))) : 0
     const barCells = Math.max(8, Math.min(40, cols - fixedCells - titleCells - (titleCells > 0 ? 1 : 0)))
     // a hairline between bars, so each bar and its agent strips read as one group
@@ -1436,7 +1329,6 @@ export const register: Register = on => {
                   <Text>{`${String(pct).padStart(2, '0')}%`.padStart(4, ' ')}</Text>
                   <Text color={color}>{fitCells(`${pillName(b)} ${pillCount(b)}`, labelCells)}</Text>
                   <Text dimColor>{time.padStart(4, ' ')}</Text>
-                  <Button key={`timeline-${b.id}`} plain dimColor label={LABEL.timelineButton} onPress={() => $.ui.open({ id: PANE, title: LABEL.timeline })} />
                   <Button key={`close-${b.id}`} plain dimColor label="✕" onPress={() => update($, bars, all => all.filter(x => x.id !== b.id))} />
                 </Box>
                 {tree}
@@ -1452,128 +1344,10 @@ export const register: Register = on => {
               <Box flexGrow={1} />
               <Svg source={source} alt={alt} width={trackW} height={TRACK_H + stripsH} isInteractive={isSettled(b) || undefined} />
               <Svg source={clockSvg(time)} alt={time} width={CLOCK_W} height={TRACK_H} />
-              <Button key={`timeline-${b.id}`} plain dimColor label={LABEL.timelineButton} onPress={() => $.ui.open({ id: PANE, title: LABEL.timeline })} />
               <Button key={`close-${b.id}`} plain dimColor label="✕" onPress={() => update($, bars, all => all.filter(x => x.id !== b.id))} />
             </Box>,
           ]
         })}
-      </Box>
-    )
-  })
-
-  // the latest turn, opened by the ≡ button or /turnbar-timeline and live while the turn runs:
-  // a head line, one bar of where the time went with its legend, then the calls and agents as plain rows
-  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const t = $.ui.resolve(e)
-    const { Box, Text } = t
-    // the terminal's table names an Svg that draws nothing, so the surface decides, not the table
-    const Svg = e.surface !== 'terminal' && 'Svg' in t ? t.Svg : null
-    const b = (await read($, bars)).at(-1)
-    if (!b) return <Text dimColor>{LABEL.noTurn}</Text>
-    await read($, tick)
-    const now = await $.clock.now()
-    const total = Math.max(1, (b.endedAt ?? now) - b.startedAt)
-    const color = STATE_COLOR[b.state]
-    const totals = spanTotals(b, now)
-    const W = Math.max(200, (e.props.bodyColumns || 60) * 8 - 16)
-    const calls = b.calls.filter(c => c.startedAt !== null)
-    const lengthOf = (c: ToolRun) => (c.endedAt ?? now) - (c.startedAt ?? now)
-    // a call that took a fifth of the turn or more is where the time went
-    const isLong = (ms: number) => ms >= total * 0.2 && ms >= 2000
-    const offset = (at: number) => `+${clockText(at - b.startedAt)}`.padStart(5, FIGURE_SPACE)
-    const filled = Math.round(
-      (Math.min(
-        total,
-        SPAN_KINDS.reduce((n, k) => n + totals[k], 0),
-      ) /
-        total) *
-        40,
-    )
-    const textBar = SPAN_KINDS.flatMap(k => {
-      const n = Math.round((totals[k] / total) * 40)
-      return n > 0
-        ? [
-            <Text key={`seg-${k}`} color={SPAN_COLOR[k]}>
-              {'━'.repeat(n)}
-            </Text>,
-          ]
-        : []
-    })
-
-    return (
-      <Box flexDirection="column" gap={1}>
-        <Box flexDirection="row" gap={1}>
-          <Text color={color}>{STATE_GLYPH[b.state]}</Text>
-          <Box flexGrow={1} flexShrink={1}>
-            <Text bold wrap="truncate">
-              {b.title || '…'}
-            </Text>
-          </Box>
-          <Text color={color}>{pillName(b)}</Text>
-          <Text dimColor>{clockText(total)}</Text>
-        </Box>
-        <Box flexDirection="column">
-          {Svg ? (
-            <Svg
-              source={phaseBarSvg(b, W, now)}
-              alt={SPAN_KINDS.map(k => `${SPAN_LABEL[k]} ${durationText(totals[k])}`).join(', ')}
-              width={W}
-              height={PHASE_BAR_H}
-              isInteractive={isSettled(b) || undefined}
-            />
-          ) : (
-            <Text>
-              {textBar}
-              <Text dimColor>{'─'.repeat(Math.max(0, 40 - filled))}</Text>
-            </Text>
-          )}
-          <Box flexDirection="row" gap={2}>
-            {SPAN_KINDS.filter(k => totals[k] > 0).map(k => (
-              <Text key={`legend-${k}`}>
-                <Text color={SPAN_COLOR[k]}>● </Text>
-                <Text dimColor>{`${SPAN_SHORT[k]} ${durationText(totals[k])}`}</Text>
-              </Text>
-            ))}
-          </Box>
-        </Box>
-        <Box flexDirection="column">
-          <Text dimColor>{`${LABEL.calls} ${calls.length}`}</Text>
-          {calls.map(c => {
-            const ms = lengthOf(c)
-            return (
-              <Box key={c.id} flexDirection="row" gap={1}>
-                <Text dimColor>{offset(c.startedAt ?? b.startedAt)}</Text>
-                <Text color={c.isError ? STATE_COLOR.error : STATE_COLOR.running}>{c.name}</Text>
-                <Box flexGrow={1} flexShrink={1}>
-                  <Text wrap="truncate" dimColor={!isLong(ms)}>
-                    {c.target}
-                  </Text>
-                </Box>
-                <Text bold={isLong(ms)} dimColor={!isLong(ms)} color={c.isError ? STATE_COLOR.error : undefined}>
-                  {c.endedAt === null ? `${LABEL.running} ${durationText(ms)}` : c.isError ? `${LABEL.failed} ${durationText(ms)}` : durationText(ms)}
-                </Text>
-              </Box>
-            )
-          })}
-          {(b.agents ?? []).map(a => {
-            const ms = (a.endedAt ?? now) - a.startedAt
-            return (
-              <Box key={`agent-${a.id}`} flexDirection="row" gap={1}>
-                <Text dimColor>{offset(a.startedAt)}</Text>
-                <Text color={AGENT_COLOR[a.state]}>{`↳ ${LABEL.agents}`}</Text>
-                <Box flexGrow={1} flexShrink={1}>
-                  <Text wrap="truncate" dimColor={!isLong(ms)}>
-                    {a.title}
-                  </Text>
-                </Box>
-                <Text bold={isLong(ms)} dimColor={!isLong(ms)}>
-                  {durationText(ms)}
-                </Text>
-              </Box>
-            )
-          })}
-        </Box>
-        {b.tokens ? <Text dimColor>{tokensText(b)}</Text> : null}
       </Box>
     )
   })

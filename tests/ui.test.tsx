@@ -5,7 +5,7 @@ const SURFACES = ['terminal', 'desktop'] as const
 const scroll = { top: 0, bodyRows: 20, contentRows: 0 } as never
 const view = {} as never
 
-test('a turn with a tool call draws the bar, the footer label and the timeline on every surface', async ($, on) => {
+test('a turn with a tool call draws the bar and the footer label on every surface', async ($, on) => {
   mock.clock(on)
   // the engine beneath the plugin: an empty drawing, and a tool that answers at once
   on('ui.render', ($, e) => {
@@ -39,10 +39,5 @@ test('a turn with a tool call draws the bar, the footer label and the timeline o
     const footer = await $.ui.mount({ plugin: 'turn-progress', surface, component: 'SessionMode', props: { modes: [] } })
     expect(await footer.find({ type: 'Text', text: /Progress/ })).toBeDefined()
     await footer.unmount()
-    const pane = await $.ui.mount({ plugin: 'turn-progress', surface, component: 'Pane', requestId: 'turn-timeline', props: { title: '턴 타임라인', isFocused: false, bodyColumns: 80, placement: 'dock', scroll, view } as never })
-    expect(await pane.find({ type: 'Text', text: /도구 호출 1/ })).toBeDefined()
-    expect(await pane.find({ type: 'Text', text: /^타입 검사$/ })).toBeDefined()
-    expect(await pane.find({ type: 'Text', text: /출력 300/ })).toBeDefined()
-    await pane.unmount()
   }
 })

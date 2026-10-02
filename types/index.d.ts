@@ -11,7 +11,7 @@ export type AgentRun = {
   endedAt: number | null
   depth: number
 }
-// one tool call of the main loop: a tick on the track, a row in the timeline
+// one tool call of the main loop: a tick on the track with its tooltip
 export type ToolRun = {
   id: string // tool_use_id
   name: string
@@ -21,9 +21,6 @@ export type ToolRun = {
   endedAt: number | null
   isError: boolean
 }
-// a stretch of the turn spent on one thing, for the timeline's top lane
-export type SpanKind = 'thinking' | 'working' | 'answering' | 'waiting'
-export type Span = { kind: SpanKind; start: number; end: number | null }
 // what the turn cost, as turn.complete reports it
 export type TurnTokens = { input: number; output: number; cacheRead: number; cacheWrite: number }
 export type TurnBar = {
@@ -34,7 +31,6 @@ export type TurnBar = {
   state: TurnState
   frac: number // 0..1, the fill
   calls: ToolRun[]
-  spans: Span[]
   note: string | null
   startedAt: number
   endedAt: number | null

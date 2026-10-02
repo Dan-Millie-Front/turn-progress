@@ -1,15 +1,13 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { AgentRun, Phase, Span, SpanKind, ToolRun, TurnBar, TurnState } from '../types'
+import type { AgentRun, Phase, ToolRun, TurnBar, TurnState } from '../types'
 
 const bars = atom({ plugin: 'turn-progress', key: 'bars' } as const, [])
 const isOpen = atom({ plugin: 'turn-progress', key: 'isOpen' } as const, true)
 const tick = atom({ plugin: 'turn-progress', key: 'tick' } as const, 0)
 
 const MAX_BARS = 1 // the current turn; a new turn replaces the finished one
-// a space as wide as a digit, so " 9s" and "1:05" take the same room (4 cells: up to 9:59 without a shift)
-const FIGURE_SPACE = String.fromCharCode(0x2007)
 const TRACK_H = 18 // the same height as an agent strip, so the rows read as one stack
 const PX_ROWS = 5 // pixel rows inside the track: 3px pitch, centred
 const NARROW = 360
@@ -24,9 +22,7 @@ const ANSWER_MIN_CHARS = 280 // this much text in a step with no tool call reads
 // and a picture swapped many times a second restarts its animations and reads as flicker
 const FLUSH_MS = 800
 const CLOCK_EVERY = 8 // streamed chunks between looks at the clock
-const MAX_CALLS = 60 // tool calls kept per turn: ticks on the track, rows in the timeline
-const MAX_SPANS = 80
-const PANE = 'turn-timeline'
+const MAX_CALLS = 60 // tool calls kept per turn: one tick each on the track
 
 const STATE_COLOR: Record<TurnState, string> = { running: '#8B7CF6', needs_input: '#E09A1E', error: '#E5484D', stopped: '#8A8984', done: '#30A46C' }
 const STATE_GLYPH: Record<TurnState, string> = { running: '●', needs_input: '?', error: '!', stopped: '■', done: '✓' }
@@ -48,10 +44,6 @@ const LABEL = {
   untitled: '계속',
   agents: '에이전트',
   button: 'Progress',
-  timeline: '턴 타임라인',
-  timelineButton: '≡',
-  noTurn: '아직 기록된 턴이 없습니다.',
-  lane: '단계',
   calls: '도구 호출',
   running: '실행 중',
   writing: '준비 중',
@@ -78,7 +70,6 @@ type Live = {
   answerChars: number
   tools: number
   calls: ToolRun[]
-  spans: Span[]
 }
 
 function fracOf(l: Live): number {
@@ -98,15 +89,6 @@ function fracOf(l: Live): number {
 // the fill only moves forward: thinking after a tool call changes the label, not the phase
 const advance = (l: Live, to: Phase) => {
   if (ORDER.indexOf(to) > ORDER.indexOf(l.phase)) l.phase = to
-}
-
-// a new stretch of the turn starts; the open one ends where it begins
-function markSpan(l: Live, kind: SpanKind, now: number) {
-  const last = l.spans[l.spans.length - 1]
-  if (last && last.end === null && last.kind === kind) return
-  if (last && last.end === null) last.end = now
-  l.spans.push({ kind, start: now, end: null })
-  if (l.spans.length > MAX_SPANS) l.spans.shift()
 }
 
 // what a call works on, in a few words: a file's name, a command, a pattern or query
@@ -457,40 +439,6 @@ function stripsSvg(v: { shown: AgentRun[]; hidden: AgentRun[] }, W: number, now:
 @media (prefers-reduced-motion:reduce){.sd,.mi,.mo{animation:none}.mo{opacity:0}}</style>${rows.join('')}`
 }
 
-const SPAN_COLOR: Record<SpanKind, string> = {
-  thinking: '#B4A9F9',
-  working: STATE_COLOR.running,
-  waiting: STATE_COLOR.needs_input,
-  answering: STATE_COLOR.done,
-}
-const SPAN_LABEL: Record<SpanKind, string> = { thinking: LABEL.thinking, working: LABEL.working, waiting: LABEL.needs_input, answering: LABEL.answering }
-const SPAN_SHORT: Record<SpanKind, string> = { thinking: '생각', working: '작업', waiting: '대기', answering: '답변' }
-const SPAN_KINDS: SpanKind[] = ['thinking', 'working', 'waiting', 'answering']
-const PHASE_BAR_H = 10
-
-// how long the turn spent on each kind of stretch
-function spanTotals(b: TurnBar, now: number): Record<SpanKind, number> {
-  const sum: Record<SpanKind, number> = { thinking: 0, working: 0, waiting: 0, answering: 0 }
-  for (const sp of b.spans) sum[sp.kind] += Math.max(0, (sp.end ?? now) - sp.start)
-  return sum
-}
-
-// the turn as one bar: each stretch in its colour, in order, across the whole width; a gap is time not yet in a stretch
-function phaseBarSvg(b: TurnBar, W: number, now: number): string {
-  const t0 = b.startedAt
-  const total = Math.max(1000, (b.endedAt ?? now) - t0)
-  const x = (t: number) => ((Math.min(Math.max(t, t0), t0 + total) - t0) / total) * W
-  const segs = b.spans
-    .map(sp => {
-      const x1 = x(sp.start)
-      const w = Math.max(1.5, x(sp.end ?? now) - x1)
-      return `<rect x="${x1.toFixed(1)}" y="0" width="${w.toFixed(1)}" height="${PHASE_BAR_H}" fill="${SPAN_COLOR[sp.kind]}"><title>${esc(`${SPAN_LABEL[sp.kind]} · ${durationText((sp.end ?? now) - sp.start)}`)}</title></rect>`
-    })
-    .join('')
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${PHASE_BAR_H}" viewBox="0 0 ${W} ${PHASE_BAR_H}"><defs><clipPath id="r"><rect width="${W}" height="${PHASE_BAR_H}" rx="${PHASE_BAR_H / 2}"/></clipPath></defs><g clip-path="url(#r)"><rect width="${W}" height="${PHASE_BAR_H}" fill="#808080" fill-opacity=".14"/>${segs}</g></svg>`
-}
-
 // ---------- engine glue ----------
 
 // the engine's player first (afplay on macOS); PowerShell where it cannot play
@@ -559,7 +507,6 @@ async function flush($: EngineInterface) {
             activity: l.activity,
             frac: Math.max(b.frac, frac),
             calls: l.calls.map(c => ({ ...c })),
-            spans: l.spans.map(sp => ({ ...sp })),
           },
     ),
   )
@@ -570,9 +517,6 @@ async function setWaiting($: EngineInterface, isWaiting: boolean, note: string |
   const l = live
   const id = l?.turnId
   if (!l || !id) return
-  // the wait is a stretch of its own on the timeline; waits happen around tool calls, so work resumes after
-  markSpan(l, isWaiting ? 'waiting' : 'working', await $.clock.now())
-  await flush($)
   let isEntered = false
   await update($, bars, list =>
     list.map(b => {
@@ -628,7 +572,6 @@ export const register: Register = on => {
     await $.command.register({ name: 'turnbar', description: 'Show or hide the turn progress bar' })
     await $.command.register({ name: 'turnbar-sounds', description: 'Play the decision, error and done sounds' })
     await $.command.register({ name: 'turnbar-clear', description: 'Remove the turn progress bar' })
-    await $.command.register({ name: 'turnbar-timeline', description: 'Open the timeline of the latest turn' })
 
     return next(e)
   })
@@ -650,7 +593,6 @@ export const register: Register = on => {
       answerChars: 0,
       tools: 0,
       calls: [],
-      spans: [],
     }
     const bar: TurnBar = {
       id: e.turnId,
@@ -660,7 +602,6 @@ export const register: Register = on => {
       state: 'running',
       frac: 0,
       calls: [],
-      spans: [],
       note: null,
       startedAt: now,
       endedAt: null,
@@ -696,19 +637,13 @@ export const register: Register = on => {
       let isNow = false
       if (c.kind === 'thinking') {
         l.thinkChars += c.text.length
-        if (l.activity !== LABEL.thinking) {
-          isNow = true
-          markSpan(l, 'thinking', await $.clock.now())
-        }
+        isNow = l.activity !== LABEL.thinking
         advance(l, 'thinking')
         l.activity = LABEL.thinking
       } else if (c.kind === 'text') {
         l.stepText += c.text.length
         if (!l.isStepTool && l.stepText >= ANSWER_MIN_CHARS) {
-          if (l.activity !== LABEL.answering) {
-            isNow = true
-            markSpan(l, 'answering', await $.clock.now())
-          }
+          isNow = l.activity !== LABEL.answering
           advance(l, 'answering')
           if (l.phase === 'answering') l.answerChars = l.stepText
           l.activity = LABEL.answering
@@ -718,7 +653,6 @@ export const register: Register = on => {
         l.tools += 1
         advance(l, 'working')
         l.activity = LABEL.working
-        markSpan(l, 'working', await $.clock.now())
         l.calls = [...l.calls, { id: c.id, name: c.name, target: '', frac: fracOf(l), startedAt: null, endedAt: null, isError: false }].slice(-MAX_CALLS)
         isNow = true
       } else if (c.kind === 'stop') {
@@ -846,8 +780,6 @@ export const register: Register = on => {
     pendingMain.clear()
     waitingMain.clear()
     const now = await $.clock.now()
-    const lastSpan = l.spans[l.spans.length - 1]
-    if (lastSpan && lastSpan.end === null) lastSpan.end = now
     for (const c of l.calls) if (c.startedAt !== null && c.endedAt === null) c.endedAt = now
     const u = e.usage
     const tokens = u
@@ -869,8 +801,7 @@ export const register: Register = on => {
               endedAt: now,
               tokens,
               calls: l.calls.map(c => ({ ...c })),
-              spans: l.spans.map(sp => ({ ...sp })),
-            },
+              },
       ),
     )
     if (state === 'done' && e.durationMs >= DONE_SOUND_MIN_MS) play($, 'done')
@@ -885,12 +816,6 @@ export const register: Register = on => {
     await update($, isOpen, () => !open)
 
     return { text: open ? 'Turn bar hidden.' : 'Turn bar shown.' }
-  })
-
-  on('command.run', { command: 'turnbar-timeline' }, async $ => {
-    await $.ui.open({ id: PANE, title: LABEL.timeline })
-
-    return { text: `${LABEL.timeline}을 열었습니다.` }
   })
 
   on('command.run', { command: 'turnbar-sounds' }, async $ => {
@@ -939,17 +864,17 @@ export const register: Register = on => {
     const total = Math.max(320, (e.props.bodyColumns || 100) * 8)
     // a fixed title column, so the track does not move when a title arrives; every bar is pinned to the right edge
     // (fixed-width clock, close button) and the rows line up.
-    // Desktop reports ~8 CSS px per column; glyph, gaps, clock and the timeline and close buttons take ~164 px.
+    // Desktop reports ~8 CSS px per column; glyph, gaps, clock and the close button take ~144 px.
     const titleWidth = Math.round(Math.max(120, Math.min(220, total * 0.22)))
-    const trackW = Math.max(120, Math.min(1400, total - titleWidth - 164))
+    const trackW = Math.max(120, Math.min(1400, total - titleWidth - 144))
     await read($, tick)
     const now = await $.clock.now()
     // the terminal: every part has a width counted in cells, so nothing is squeezed out of a narrow row.
     // The engine keeps a few cells on the right for its own collapse mark.
     const cols = Math.max(30, (e.props.bodyColumns || 80) - 4)
     const labelCells = Math.max(...list.map(b => cells(`${pillName(b)} ${pillCount(b)}`)), 9)
-    // glyph, percent, label, clock, two buttons and the gaps between the eight parts
-    const fixedCells = 1 + 4 + labelCells + 4 + 1 + 1 + 7
+    // glyph, percent, label, clock, the close button and the gaps between the seven parts
+    const fixedCells = 1 + 4 + labelCells + 4 + 1 + 6
     const titleCells = cols - fixedCells >= 30 ? Math.min(20, Math.max(...list.map(b => cells(b.title || '…')))) : 0
     const barCells = Math.max(8, Math.min(40, cols - fixedCells - titleCells - (titleCells > 0 ? 1 : 0)))
     // a hairline between bars, so each bar and its agent strips read as one group
@@ -1013,7 +938,6 @@ export const register: Register = on => {
                   <Text>{`${String(pct).padStart(2, '0')}%`.padStart(4, ' ')}</Text>
                   <Text color={color}>{fitCells(`${pillName(b)} ${pillCount(b)}`, labelCells)}</Text>
                   <Text dimColor>{time.padStart(4, ' ')}</Text>
-                  <Button key={`timeline-${b.id}`} plain dimColor label={LABEL.timelineButton} onPress={() => $.ui.open({ id: PANE, title: LABEL.timeline })} />
                   <Button key={`close-${b.id}`} plain dimColor label="✕" onPress={() => update($, bars, all => all.filter(x => x.id !== b.id))} />
                 </Box>
                 {tree}
@@ -1029,128 +953,10 @@ export const register: Register = on => {
               <Box flexGrow={1} />
               <Svg source={source} alt={alt} width={trackW} height={TRACK_H + stripsH} isInteractive={isSettled(b) || undefined} />
               <Svg source={clockSvg(time)} alt={time} width={CLOCK_W} height={TRACK_H} />
-              <Button key={`timeline-${b.id}`} plain dimColor label={LABEL.timelineButton} onPress={() => $.ui.open({ id: PANE, title: LABEL.timeline })} />
               <Button key={`close-${b.id}`} plain dimColor label="✕" onPress={() => update($, bars, all => all.filter(x => x.id !== b.id))} />
             </Box>,
           ]
         })}
-      </Box>
-    )
-  })
-
-  // the latest turn, opened by the ≡ button or /turnbar-timeline and live while the turn runs:
-  // a head line, one bar of where the time went with its legend, then the calls and agents as plain rows
-  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const t = $.ui.resolve(e)
-    const { Box, Text } = t
-    // the terminal's table names an Svg that draws nothing, so the surface decides, not the table
-    const Svg = e.surface !== 'terminal' && 'Svg' in t ? t.Svg : null
-    const b = (await read($, bars)).at(-1)
-    if (!b) return <Text dimColor>{LABEL.noTurn}</Text>
-    await read($, tick)
-    const now = await $.clock.now()
-    const total = Math.max(1, (b.endedAt ?? now) - b.startedAt)
-    const color = STATE_COLOR[b.state]
-    const totals = spanTotals(b, now)
-    const W = Math.max(200, (e.props.bodyColumns || 60) * 8 - 16)
-    const calls = b.calls.filter(c => c.startedAt !== null)
-    const lengthOf = (c: ToolRun) => (c.endedAt ?? now) - (c.startedAt ?? now)
-    // a call that took a fifth of the turn or more is where the time went
-    const isLong = (ms: number) => ms >= total * 0.2 && ms >= 2000
-    const offset = (at: number) => `+${clockText(at - b.startedAt)}`.padStart(5, FIGURE_SPACE)
-    const filled = Math.round(
-      (Math.min(
-        total,
-        SPAN_KINDS.reduce((n, k) => n + totals[k], 0),
-      ) /
-        total) *
-        40,
-    )
-    const textBar = SPAN_KINDS.flatMap(k => {
-      const n = Math.round((totals[k] / total) * 40)
-      return n > 0
-        ? [
-            <Text key={`seg-${k}`} color={SPAN_COLOR[k]}>
-              {'━'.repeat(n)}
-            </Text>,
-          ]
-        : []
-    })
-
-    return (
-      <Box flexDirection="column" gap={1}>
-        <Box flexDirection="row" gap={1}>
-          <Text color={color}>{STATE_GLYPH[b.state]}</Text>
-          <Box flexGrow={1} flexShrink={1}>
-            <Text bold wrap="truncate">
-              {b.title || '…'}
-            </Text>
-          </Box>
-          <Text color={color}>{pillName(b)}</Text>
-          <Text dimColor>{clockText(total)}</Text>
-        </Box>
-        <Box flexDirection="column">
-          {Svg ? (
-            <Svg
-              source={phaseBarSvg(b, W, now)}
-              alt={SPAN_KINDS.map(k => `${SPAN_LABEL[k]} ${durationText(totals[k])}`).join(', ')}
-              width={W}
-              height={PHASE_BAR_H}
-              isInteractive={isSettled(b) || undefined}
-            />
-          ) : (
-            <Text>
-              {textBar}
-              <Text dimColor>{'─'.repeat(Math.max(0, 40 - filled))}</Text>
-            </Text>
-          )}
-          <Box flexDirection="row" gap={2}>
-            {SPAN_KINDS.filter(k => totals[k] > 0).map(k => (
-              <Text key={`legend-${k}`}>
-                <Text color={SPAN_COLOR[k]}>● </Text>
-                <Text dimColor>{`${SPAN_SHORT[k]} ${durationText(totals[k])}`}</Text>
-              </Text>
-            ))}
-          </Box>
-        </Box>
-        <Box flexDirection="column">
-          <Text dimColor>{`${LABEL.calls} ${calls.length}`}</Text>
-          {calls.map(c => {
-            const ms = lengthOf(c)
-            return (
-              <Box key={c.id} flexDirection="row" gap={1}>
-                <Text dimColor>{offset(c.startedAt ?? b.startedAt)}</Text>
-                <Text color={c.isError ? STATE_COLOR.error : STATE_COLOR.running}>{c.name}</Text>
-                <Box flexGrow={1} flexShrink={1}>
-                  <Text wrap="truncate" dimColor={!isLong(ms)}>
-                    {c.target}
-                  </Text>
-                </Box>
-                <Text bold={isLong(ms)} dimColor={!isLong(ms)} color={c.isError ? STATE_COLOR.error : undefined}>
-                  {c.endedAt === null ? `${LABEL.running} ${durationText(ms)}` : c.isError ? `${LABEL.failed} ${durationText(ms)}` : durationText(ms)}
-                </Text>
-              </Box>
-            )
-          })}
-          {(b.agents ?? []).map(a => {
-            const ms = (a.endedAt ?? now) - a.startedAt
-            return (
-              <Box key={`agent-${a.id}`} flexDirection="row" gap={1}>
-                <Text dimColor>{offset(a.startedAt)}</Text>
-                <Text color={AGENT_COLOR[a.state]}>{`↳ ${LABEL.agents}`}</Text>
-                <Box flexGrow={1} flexShrink={1}>
-                  <Text wrap="truncate" dimColor={!isLong(ms)}>
-                    {a.title}
-                  </Text>
-                </Box>
-                <Text bold={isLong(ms)} dimColor={!isLong(ms)}>
-                  {durationText(ms)}
-                </Text>
-              </Box>
-            )
-          })}
-        </Box>
-        {b.tokens ? <Text dimColor>{tokensText(b)}</Text> : null}
       </Box>
     )
   })

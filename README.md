@@ -7,7 +7,6 @@
 - pill에 지금 단계와 위치(`작업 중 2/3`)를 표시하고, 오른쪽에 경과 시간을 표시
 - 서브에이전트는 바 아래 상태 스트립으로 표시
 - 턴이 끝난 뒤 틱에 마우스를 올리면 `Edit · register.tsx · 0.8s` 같은 툴팁이 나옵니다.
-- `≡` 버튼이나 `/turnbar-timeline`을 쓰면 이번 턴을 시간축으로 펼친 타임라인 패널이 열립니다. 생각, 작업, 대기, 답변에 쓴 시간과 도구 호출 목록이 보이고, 오래 걸린 호출은 굵게 표시됩니다.
 - 질문·승인 대기는 amber, 오류는 red, 중단은 grey, 완료는 green
 - 모델 도구나 프롬프트 규칙을 쓰지 않아, 토큰이 드는 곳은 제목 요약뿐
 
@@ -39,7 +38,6 @@ claude --plugin-dir ~/Github/turn-progress
 - `/turnbar` 표시/숨김
 - `/turnbar-sounds` 사운드 3종 재생
 - `/turnbar-clear` 바 제거
-- `/turnbar-timeline` 타임라인 패널 열기
 
 ## 개발
 
