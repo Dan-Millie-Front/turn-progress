@@ -247,7 +247,7 @@ CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude -p "Run ls once, then reply in one se
 ## 9. 엣지 케이스
 
 - **연속 턴/백그라운드 알림**: `turn.start.text`가 `""`인 턴(continuation, 작업 알림)도 바를 만들고 제목은 `계속`이다.
-- **백그라운드 에이전트가 턴보다 오래 돌 때**: 새 턴이 시작되면 아직 running/waiting인 에이전트를 새 바로 옮기고 `agentHome`도 바꾼다.
+- **백그라운드 에이전트가 턴보다 오래 돌 때**: 새 턴이 시작되면 이전 바의 에이전트를 새 바로 옮긴다. 아직 접히지 않은 배치(끝난 지 5초 이내)는 **끝난 에이전트까지 통째로** 옮기고 `agentsDoneAt`도 이어 받는다. 백그라운드 에이전트가 끝나면 엔진이 그 결과를 알리는 턴을 바로(약 0.1초 뒤) 시작하기 때문에, 돌고 있는 것만 옮기면 `완료` 스트립이 보이기도 전에 사라진다. 이미 접힌 배치에서는 돌고 있는 에이전트만 옮긴다. `tests/ui.test.tsx`의 두 번째 테스트가 이 경우를 재현한다.
 - **핫리로드 중의 턴**: `live`가 사라지므로 그 턴의 바는 다음 턴이 올 때까지 마지막 상태로 남는다. 의도된 동작이다.
 - **동시 쓰기**: 모든 쓰기는 `update($, atom, fn)` 안에서 최신 목록으로 계산한다(ifVersion 재시도). `update` fn 안의 부수효과(`agentHome.set`)는 재시도해도 결과가 같아야 한다.
 - **스트림 지연**: `turn.step`에서는 반드시 `yield c`를 먼저 하고 그다음에 `await flush`. 화면 스트리밍이 막히지 않는다. 제너레이터가 값을 반환하지 않으면 `next(e)`의 결과가 그대로 쓰인다.
@@ -958,10 +958,14 @@ export const register: Register = on => {
     }
     let kept: TurnBar[] = []
     await update($, bars, list => {
-      // agents still running in the background move to the new bar, so their strips stay
-      const carried = list.flatMap(b => (b.agents ?? []).filter(a => a.state === 'running' || a.state === 'waiting'))
-      for (const a of carried) agentHome.set(a.id, e.turnId)
-      kept = placeBar(list, { ...bar, agents: carried })
+      // the agents of a batch that has not folded yet move to the new bar, finished ones too: a background
+      // agent's end starts a turn of its own at once (its notification), and the strip would vanish before
+      // it ever showed it was done. A folded batch stays behind; its running agents still move.
+      const isShown = (x: TurnBar) => !x.agentsDoneAt || now - x.agentsDoneAt <= FOLD_MS
+      const carried = list.flatMap(x => (x.agents ?? []).filter(a => isShown(x) || a.state === 'running' || a.state === 'waiting'))
+      const doneAt = list.find(x => x.agentsDoneAt && isShown(x))?.agentsDoneAt ?? null
+      for (const a of carried) if (a.state === 'running' || a.state === 'waiting') agentHome.set(a.id, e.turnId)
+      kept = placeBar(list, syncAgents({ ...bar, agents: carried, agentsDoneAt: doneAt }, now))
       return kept
     })
     for (const id of [...lastHead.keys()]) if (!kept.some(b => b.id === id)) lastHead.delete(id)

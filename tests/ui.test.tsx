@@ -41,3 +41,26 @@ test('a turn with a tool call draws the bar and the footer label on every surfac
     await footer.unmount()
   }
 })
+
+test('a background agent that finishes shows as done in the turn its notification starts', async ($, on) => {
+  mock.clock(on)
+  on('ui.render', ($, e) => {
+    const { Box } = $.ui.resolve(e)
+    return <Box />
+  })
+  on('turn.start', ($, e) => ({ turnId: e.turnId }))
+  on('turn.complete', () => ({ text: '' }))
+  on('agent.spawn', () => ({ model: 'haiku', agentId: 'ag1' }) as never)
+
+  await $.turn.start({ text: '조사해줘', turnId: 't1' })
+  await $.agent.spawn({ prompt: 'look', description: '파일 조사', subagentType: 'Explore', background: true } as never)
+  await $.turn.complete({ turnId: 't1', reason: 'answer', answer: '', durationMs: 1000, isAborted: false } as never)
+  // the agent ends, and its notification starts the next turn right away
+  await $.turn.complete({ turnId: 'a1', agentId: 'ag1', reason: 'answer', answer: 'ok', durationMs: 5000, isAborted: false } as never)
+  await $.turn.start({ text: '', turnId: 't2' })
+
+  const band = await $.ui.mount({ plugin: 'turn-progress', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: true, maxRows: 20, bodyColumns: 120, scroll } as never })
+  expect(await band.find({ type: 'Text', text: /파일 조사/ })).toBeDefined()
+  expect(await band.find({ type: 'Text', text: /^ 완료\s*$/ })).toBeDefined()
+  await band.unmount()
+})

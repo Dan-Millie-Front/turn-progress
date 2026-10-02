@@ -583,10 +583,14 @@ export const register: Register = on => {
     }
     let kept: TurnBar[] = []
     await update($, bars, list => {
-      // agents still running in the background move to the new bar, so their strips stay
-      const carried = list.flatMap(b => (b.agents ?? []).filter(a => a.state === 'running' || a.state === 'waiting'))
-      for (const a of carried) agentHome.set(a.id, e.turnId)
-      kept = placeBar(list, { ...bar, agents: carried })
+      // the agents of a batch that has not folded yet move to the new bar, finished ones too: a background
+      // agent's end starts a turn of its own at once (its notification), and the strip would vanish before
+      // it ever showed it was done. A folded batch stays behind; its running agents still move.
+      const isShown = (x: TurnBar) => !x.agentsDoneAt || now - x.agentsDoneAt <= FOLD_MS
+      const carried = list.flatMap(x => (x.agents ?? []).filter(a => isShown(x) || a.state === 'running' || a.state === 'waiting'))
+      const doneAt = list.find(x => x.agentsDoneAt && isShown(x))?.agentsDoneAt ?? null
+      for (const a of carried) if (a.state === 'running' || a.state === 'waiting') agentHome.set(a.id, e.turnId)
+      kept = placeBar(list, syncAgents({ ...bar, agents: carried, agentsDoneAt: doneAt }, now))
       return kept
     })
     for (const id of [...lastHead.keys()]) if (!kept.some(b => b.id === id)) lastHead.delete(id)
