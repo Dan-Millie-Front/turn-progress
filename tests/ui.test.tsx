@@ -30,6 +30,11 @@ test('a turn with a tool call draws the bar, the footer label and the timeline o
   for (const surface of SURFACES) {
     const band = await $.ui.mount({ plugin: 'turn-progress', surface, component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 120, scroll } as never })
     expect(await band.find({ type: 'Text', text: /타입 검사 돌려줘/ })).toBeDefined()
+    if (surface === 'terminal') {
+      // the finished turn: a full dithered bar and its share
+      expect(await band.find({ type: 'Text', text: /^▓{8,}$/ })).toBeDefined()
+      expect(await band.find({ type: 'Text', text: /100%/ })).toBeDefined()
+    }
     await band.unmount()
     const footer = await $.ui.mount({ plugin: 'turn-progress', surface, component: 'SessionMode', props: { modes: [] } })
     expect(await footer.find({ type: 'Text', text: /Progress/ })).toBeDefined()

@@ -214,7 +214,7 @@ CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude -p "Run ls once, then reply in one se
 - 채움 영역: 상태색 그라디언트(시작 opacity .05, 완료 시 .3 → 끝 .33).
 - 픽셀: 3px 격자, 5행(세로 가운데 정렬), 2×2 사각형. 머리 쪽으로 갈수록 밀도가 높아지고(`0.22 + 0.78·u^1.5`) 회색 `#84828A`에서 상태색의 밝은 톤으로 5단계(b0–b4) 변한다. 해시 기반이라 결정적이다. `t0`–`t3` 네 그룹이 서로 다른 주기로 반짝인다(`prefers-reduced-motion`이면 정지).
 - 마크: 도구 틱만 그린다. 1.5px 폭에 7px 높이이고, 지나간 틱은 밝은 흰톤(.6), 아직 안 지난 틱은 `#8A8984`(.45).
-- 노브(pill): 상태색 rx 9. `[아이콘] 라벨 카운트` 순서이고 라벨은 500 11.5px 흰색(상태색 위라 테마와 무관), 카운트는 400에 opacity .75. 폭은 내용 길이에 맞춘다(`20 + 아이콘 16 + 라벨 + 카운트`, 최대 `max(80, W*0.55)`, 넘치면 `…`). **모든 상태에 아이콘이 붙는다**: running이면 단계별 아이콘(요청 → 화살표, 생각 → 점 세 개, 작업 → `</>`, 답변 → 글줄), 그 외에는 상태 아이콘(?, X, 사각형, 체크). 그래서 어떤 pill이든 `아이콘 라벨 n/3` 모양으로 같다. 위치는 채움 머리에 맞추고 양 끝에 clamp한다.
+- 노브(pill): 상태색 rx 9. `[아이콘] 라벨 카운트` 순서이고 라벨은 500 11.5px 흰색(상태색 위라 테마와 무관), 카운트는 400에 opacity .75. 폭은 내용 길이에 맞춘다(`20 + 아이콘 16 + 라벨 + 카운트`, 최대 `max(80, W*0.55)`, 넘치면 `…`). **모든 상태에 아이콘이 붙는다**: running이면 **지금 하는 일(`activity`) 기준**의 단계별 아이콘(라벨과 항상 일치. 작업 뒤에 다시 생각하면 `2/3`이어도 점 세 개)(요청 → 화살표, 생각 → 점 세 개, 작업 → `</>`, 답변 → 글줄), 그 외에는 상태 아이콘(?, X, 사각형, 체크). 그래서 어떤 pill이든 `아이콘 라벨 n/3` 모양으로 같다. 위치는 채움 머리에 맞추고 양 끝에 clamp한다.
 - 글라이드: 마지막 머리 위치(`lastHead`)에서 새 위치로 .45s 스플라인(`.2 .8 .2 1`). 채움 너비와 노브가 같이 움직인다.
 - 좁을 때(`W < 360`): pill 대신 지름 18 원에 구간 번호(1 생각, 2 작업, 3 답변)를 넣고, 완료면 체크를 그린다.
 - **한글 폭**: `textWidth`의 넓은 문자 범위에 `\u1100-\u11ff\uac00-\ud7af\uff00-\uffef`를 포함하고, 1em(11.5px)으로 잰다. 공백은 3.3px. 원본에는 이 범위가 빠져 있어서 한글 pill 폭이 틀렸다.
@@ -225,7 +225,16 @@ CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude -p "Run ls once, then reply in one se
 
 **에이전트 스트립** (`stripsSvg`, plan-progress 그대로): 트랙 아래 5px부터 18px 높이, 3px 간격. 이름과 시간 글자는 **테마를 따른다**: 기본은 `#26252B`(라이트), `@media (prefers-color-scheme:dark)`에서는 `#F0EEFC`. 데스크톱은 SVG를 이미지로 그리고, Chromium은 이미지 안의 미디어 쿼리에도 앱 테마를 반영한다(직접 확인함). 상태색 15% 바탕에 점(running이면 깜빡임), 이름(하위 에이전트는 `↳ `와 12px 들여쓰기), 현재 도구, 오른쪽에 경과 시간. 상태가 바뀌면 200ms 블러 모프와 색 흐름 애니메이션이 들어간다. 4개를 넘으면 완료된 것들은 `+N more agents · M done` 한 줄로 접힌다. 배치가 끝나고 5초 뒤 접히고, 실패한 스트립은 남는다.
 
-**터미널 폴백** (`Svg` 요소가 없는 surface): `━`(상태색) / `─`(dim) 25칸 바 + ` 라벨 카운트`. 채움은 `frac*100`.
+**터미널** (`e.surface === 'terminal'`일 때. 터미널의 요소 표에도 `Svg`가 있지만 **아무것도 그리지 않는 빈 상자**라서, 요소 표에 `Svg`가 있는지가 아니라 surface로 판단해야 한다. 이걸 놓치면 터미널에서 바가 통째로 사라진다):
+```
+● 타입 검사 돌려줘    ▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░  42% 작업 중 2/3   18s ≡ ✕
+  └ Find call sites                                  Done          29s
+  └ Check migrations                                 Grep          52s
+```
+- 모든 칸의 폭을 **셀 단위로 직접 계산**한다(`cells`: 한글·CJK·전각은 2셀, `fitCells`: 넘치면 `…`로 자르고 남으면 공백으로 채움). flex에 맡기면 좁은 터미널에서 바 칸이 0으로 밀려 사라진다.
+- `cols = bodyColumns - 4`(엔진의 접기 표시 자리). 고정 칸은 글리프 1, 퍼센트 4, 라벨(가장 긴 `라벨 카운트`, 최소 9), 시계 4, 버튼 2개, 간격 7이다. 제목은 남는 폭이 30셀 이상일 때만 최대 20셀로 넣고, 바는 8~40셀이다.
+- 바: 끝난 몫은 `▓`(상태색), 나머지는 `░`(dim). 옆에 `05%` 형식으로 두 자리 이상, 4칸 오른쪽 정렬한 퍼센트를 붙인다.
+- 서브에이전트: 바 아래에 `└` 트리로 그린다(하위 에이전트는 4칸 들여쓰기). 이름(남는 폭), 지금 도구(12셀, 상태색), 경과 시간(5셀)이고, 끝난 에이전트는 이름을 dim으로 한다. 접힌 것들은 `└ +N more agents · M done` 한 줄로 묶는다. 바와 트리는 간격 없는 한 묶음(`Box column`)이다.
 
 **접근성**: Svg `alt` = `제목: 라벨, 카운트, 경과시간; agents: …`.
 
@@ -498,10 +507,13 @@ type Live = {
 function fracOf(l: Live): number {
   const [a, b] = SEG[l.phase]
   const u =
-    l.phase === 'thinking' ? 1 - Math.exp(-l.thinkChars / 2400)
-    : l.phase === 'working' ? 1 - Math.pow(0.8, l.tools)
-    : l.phase === 'answering' ? 1 - Math.exp(-l.answerChars / 1500)
-    : 0
+    l.phase === 'thinking'
+      ? 1 - Math.exp(-l.thinkChars / 2400)
+      : l.phase === 'working'
+        ? 1 - Math.pow(0.8, l.tools)
+        : l.phase === 'answering'
+          ? 1 - Math.exp(-l.answerChars / 1500)
+          : 0
 
   return a + (b - a) * Math.min(0.97, u)
 }
@@ -531,8 +543,16 @@ function targetOf(input: Record<string, unknown>): string {
 }
 
 const firstLine = (text: string) => {
-  const line = text.split(/\r?\n/).map(s => s.trim()).find(Boolean) ?? ''
-  return line.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/[*_`#>"']/g, '').replace(/\s+/g, ' ').trim()
+  const line =
+    text
+      .split(/\r?\n/)
+      .map(s => s.trim())
+      .find(Boolean) ?? ''
+  return line
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/[*_`#>"']/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 const SHORT_TITLE = 20 // a one-line prompt this short is its own title; a longer one is named
@@ -561,7 +581,22 @@ const hash = (a: number, b: number, k: number) => {
 // Hangul, CJK and full-width forms are one em wide (the pill and strip text are 11.5px)
 const WIDE = /[ᄀ-ᇿ　-鿿가-힯＀-￯]/
 // an estimate of the drawn width, for sizing the pill and truncating
-const textWidth = (s: string, px = 6.7) => [...s].reduce((w, ch) => w + (WIDE.test(ch) ? 11.5 : ch === ' ' ? 3.3 : /[ilI.,:;'|!]/.test(ch) ? 3.4 : /[mwMWШЩЖМ]/.test(ch) ? 9.5 : px), 0)
+const textWidth = (s: string, px = 6.7) =>
+  [...s].reduce((w, ch) => w + (WIDE.test(ch) ? 11.5 : ch === ' ' ? 3.3 : /[ilI.,:;'|!]/.test(ch) ? 3.4 : /[mwMWШЩЖМ]/.test(ch) ? 9.5 : px), 0)
+
+// terminal cells: Hangul, CJK and full-width forms take two
+const cells = (s: string) => [...s].reduce((n, ch) => n + (WIDE.test(ch) ? 2 : 1), 0)
+// cut to `n` cells with an ellipsis, then pad with spaces to exactly `n`, so the rows line up
+function fitCells(s: string, n: number): string {
+  if (n <= 0) return ''
+  let out = ''
+  for (const ch of s) {
+    if (cells(out + ch) > n - (cells(s) > n ? 1 : 0)) break
+    out += ch
+  }
+  if (cells(out) < cells(s)) out += '…'
+  return out + ' '.repeat(Math.max(0, n - cells(out)))
+}
 
 const ICON_PATH: Partial<Record<TurnState, string>> = {
   needs_input: 'M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01',
@@ -588,7 +623,8 @@ const durationText = (ms: number) => (ms < 10_000 ? `${(Math.max(0, ms) / 1000).
 const kilo = (n: number) => (n < 1000 ? String(n) : `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`)
 
 function callText(c: ToolRun, now: number): string {
-  const time = c.startedAt === null ? LABEL.writing : c.endedAt === null ? `${LABEL.running} ${durationText(now - c.startedAt)}` : durationText(c.endedAt - c.startedAt)
+  const time =
+    c.startedAt === null ? LABEL.writing : c.endedAt === null ? `${LABEL.running} ${durationText(now - c.startedAt)}` : durationText(c.endedAt - c.startedAt)
   return [c.name, c.target, time, c.isError ? LABEL.failed : ''].filter(Boolean).join(' · ')
 }
 
@@ -622,6 +658,14 @@ function pillCount(b: TurnBar): string {
   const agentText = agents.length > 0 ? ` · ${LABEL.agents} ${agents.filter(a => a.state === 'done').length}/${agents.length}` : ''
 
   return `${part}/${parts}${agentText}`
+}
+
+// the icon follows what happens now (the label), not the furthest phase: thinking again after a tool call shows dots
+function activityPhase(b: TurnBar): Phase {
+  if (b.activity === LABEL.thinking) return 'thinking'
+  if (b.activity === LABEL.working) return 'working'
+  if (b.activity === LABEL.answering) return 'answering'
+  return b.phase
 }
 
 // last drawn head position per bar, so a redraw glides from where the bar was
@@ -672,12 +716,16 @@ function trackSvg(b: TurnBar, W: number, now: number): string {
   // tooltips only once the bar is settled: only then is it drawn interactive, and a running call's time
   // in them would change the picture every second
   const isTipped = isSettled(b)
-  const hits = isTipped ? b.calls.map(c => `<rect x="${(c.frac * W - 4).toFixed(1)}" y="0" width="8" height="${H}" fill="transparent"><title>${esc(callText(c, now))}</title></rect>`).join('') : ''
+  const hits = isTipped
+    ? b.calls
+        .map(c => `<rect x="${(c.frac * W - 4).toFixed(1)}" y="0" width="8" height="${H}" fill="transparent"><title>${esc(callText(c, now))}</title></rect>`)
+        .join('')
+    : ''
   const pillTip = isTipped ? `<title>${esc([`${b.calls.length} ${LABEL.calls}`, tokensText(b)].filter(Boolean).join(' · '))}</title>` : ''
 
   // knob: a pill with the activity and counts, or a round dot with the part number when narrow
   const color = STATE_COLOR[b.state]
-  const icon = b.state === 'running' ? PHASE_ICON[b.phase] : ICON_PATH[b.state]
+  const icon = b.state === 'running' ? PHASE_ICON[activityPhase(b)] : ICON_PATH[b.state]
   let knob = ''
   let kw = H
   if (W < NARROW) {
@@ -699,7 +747,8 @@ function trackSvg(b: TurnBar, W: number, now: number): string {
     kw = Math.round(20 + iconW + textWidth(shown) + countW)
     const left = -kw / 2 + 10
     knob = `<rect x="${-kw / 2}" y="0" width="${kw}" height="${H}" rx="${H / 2}" fill="${color}"/>`
-    if (icon) knob += `<path d="${icon}" transform="translate(${left} ${(H - 12) / 2}) scale(.5)" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>`
+    if (icon)
+      knob += `<path d="${icon}" transform="translate(${left} ${(H - 12) / 2}) scale(.5)" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>`
     knob += `<text x="${left + iconW}" y="${H / 2 + 4}" class="kt">${esc(shown)}${count ? `<tspan class="kc" dx="6">${esc(count)}</tspan>` : ''}</text>`
   }
   const clampX = (x: number) => Math.max(kw / 2, Math.min(W - kw / 2, x))
@@ -719,7 +768,9 @@ rect[class]{width:2px;height:2px}
 @media (prefers-reduced-motion:reduce){.t0,.t1,.t2,.t3{animation:none}}
 </style>`
   const glideFill = glide ? `<animate attributeName="width" from="${from.toFixed(1)}" to="${fx.toFixed(1)}" dur=".45s" ${ease} fill="freeze"/>` : ''
-  const glideKnob = glide ? `<animateTransform attributeName="transform" type="translate" from="${kFrom.toFixed(1)} 0" to="${kx.toFixed(1)} 0" dur=".45s" ${ease} fill="freeze"/>` : ''
+  const glideKnob = glide
+    ? `<animateTransform attributeName="transform" type="translate" from="${kFrom.toFixed(1)} 0" to="${kx.toFixed(1)} 0" dur=".45s" ${ease} fill="freeze"/>`
+    : ''
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${style}
 <defs><clipPath id="pill"><rect width="${W}" height="${H}" rx="${H / 2}"/></clipPath><clipPath id="fill"><rect width="${fx.toFixed(1)}" height="${H}">${glideFill}</rect></clipPath>
@@ -743,7 +794,12 @@ function visibleAgents(b: TurnBar, now: number): { shown: AgentRun[]; hidden: Ag
   const hasError = list.some(a => a.state === 'error')
   if (b.agentsDoneAt && now - b.agentsDoneAt > FOLD_MS && !hasError) return null
   if (list.length <= MAX_STRIPS) return { shown: list, hidden: [] }
-  const keep = new Set(list.filter(a => a.state !== 'done').slice(0, MAX_STRIPS - 1).map(a => a.id))
+  const keep = new Set(
+    list
+      .filter(a => a.state !== 'done')
+      .slice(0, MAX_STRIPS - 1)
+      .map(a => a.id),
+  )
   for (const a of [...list].reverse()) {
     if (keep.size >= MAX_STRIPS - 1) break
     keep.add(a.id)
@@ -786,7 +842,8 @@ function stripsSvg(v: { shown: AgentRun[]; hidden: AgentRun[] }, W: number, now:
     const was = lastStrip.get(a.id)
     lastStrip.set(a.id, { tool: a.tool, color: c })
     const isToolChanged = was !== undefined && was.tool !== a.tool
-    const flow = (attr: string) => (was && was.color !== c ? `<animate attributeName="${attr}" from="${was.color}" to="${c}" dur="${MORPH}" fill="freeze"/>` : '')
+    const flow = (attr: string) =>
+      was && was.color !== c ? `<animate attributeName="${attr}" from="${was.color}" to="${c}" dur="${MORPH}" fill="freeze"/>` : ''
     const tool = isNarrow
       ? ''
       : (isToolChanged ? `<text x="${toolX}" y="${y + 12.5}" class="sn mo" style="fill:${was.color}">${esc(was.tool)}</text>` : '') +
@@ -815,7 +872,12 @@ function stripsSvg(v: { shown: AgentRun[]; hidden: AgentRun[] }, W: number, now:
 @media (prefers-reduced-motion:reduce){.sd,.mi,.mo{animation:none}.mo{opacity:0}}</style>${rows.join('')}`
 }
 
-const SPAN_COLOR: Record<SpanKind, string> = { thinking: '#B4A9F9', working: STATE_COLOR.running, waiting: STATE_COLOR.needs_input, answering: STATE_COLOR.done }
+const SPAN_COLOR: Record<SpanKind, string> = {
+  thinking: '#B4A9F9',
+  working: STATE_COLOR.running,
+  waiting: STATE_COLOR.needs_input,
+  answering: STATE_COLOR.done,
+}
 const SPAN_LABEL: Record<SpanKind, string> = { thinking: LABEL.thinking, working: LABEL.working, waiting: LABEL.needs_input, answering: LABEL.answering }
 const SPAN_SHORT: Record<SpanKind, string> = { thinking: '생각', working: '작업', waiting: '대기', answering: '답변' }
 const SPAN_KINDS: SpanKind[] = ['thinking', 'working', 'waiting', 'answering']
@@ -849,11 +911,25 @@ function phaseBarSvg(b: TurnBar, W: number, now: number): string {
 // the engine's player first (afplay on macOS); PowerShell where it cannot play
 function play($: EngineInterface, name: 'decision' | 'error' | 'done') {
   const file = `${$.plugin.root}/sounds/${name}.wav`.replace(/\//g, '\\')
-  void $.audio.play({ asset: `sounds/${name}.wav` }).catch(() =>
-    $.process
-      .run(['powershell', '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', `(New-Object Media.SoundPlayer '${file}').PlaySync()`], { timeoutMs: 5000 })
-      .catch(() => undefined),
-  )
+  void $.audio
+    .play({ asset: `sounds/${name}.wav` })
+    .catch(() =>
+      $.process
+        .run(
+          [
+            'powershell',
+            '-NoLogo',
+            '-NoProfile',
+            '-NonInteractive',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-Command',
+            `(New-Object Media.SoundPlayer '${file}').PlaySync()`,
+          ],
+          { timeoutMs: 5000 },
+        )
+        .catch(() => undefined),
+    )
 }
 
 const isLive = (b: TurnBar) => b.state === 'running' || b.state === 'needs_input'
@@ -892,7 +968,14 @@ async function flush($: EngineInterface) {
     list.map(b =>
       b.id !== l.turnId || !isLive(b)
         ? b
-        : { ...b, phase: l.phase, activity: l.activity, frac: Math.max(b.frac, frac), calls: l.calls.map(c => ({ ...c })), spans: l.spans.map(sp => ({ ...sp })) },
+        : {
+            ...b,
+            phase: l.phase,
+            activity: l.activity,
+            frac: Math.max(b.frac, frac),
+            calls: l.calls.map(c => ({ ...c })),
+            spans: l.spans.map(sp => ({ ...sp })),
+          },
     ),
   )
 }
@@ -972,7 +1055,18 @@ export const register: Register = on => {
     const isShort = !e.text.trim().includes('\n') && [...line].length <= SHORT_TITLE
     // an empty title draws as a placeholder until the name arrives
     const title = !line ? LABEL.untitled : isShort ? line : ''
-    live = { turnId: e.turnId, phase: 'request', activity: LABEL.request, thinkChars: 0, stepText: 0, isStepTool: false, answerChars: 0, tools: 0, calls: [], spans: [] }
+    live = {
+      turnId: e.turnId,
+      phase: 'request',
+      activity: LABEL.request,
+      thinkChars: 0,
+      stepText: 0,
+      isStepTool: false,
+      answerChars: 0,
+      tools: 0,
+      calls: [],
+      spans: [],
+    }
     const bar: TurnBar = {
       id: e.turnId,
       title,
@@ -1132,7 +1226,15 @@ export const register: Register = on => {
     const id = started.agentId
     const now = await $.clock.now()
     agentHome.set(id, home)
-    const run: AgentRun = { id, title: (e.description || e.subagentType).slice(0, 60), state: 'running', tool: 'Starting', startedAt: now, endedAt: null, depth: parentHome ? 1 : 0 }
+    const run: AgentRun = {
+      id,
+      title: (e.description || e.subagentType).slice(0, 60),
+      state: 'running',
+      tool: 'Starting',
+      startedAt: now,
+      endedAt: null,
+      depth: parentHome ? 1 : 0,
+    }
     await update($, bars, list => list.map(b => (b.id === home ? addRun(b, run, e.parentAgentId, now) : b)))
 
     return started
@@ -1163,7 +1265,9 @@ export const register: Register = on => {
     if (lastSpan && lastSpan.end === null) lastSpan.end = now
     for (const c of l.calls) if (c.startedAt !== null && c.endedAt === null) c.endedAt = now
     const u = e.usage
-    const tokens = u ? { input: u.input_tokens, output: u.output_tokens, cacheRead: u.cache_read_input_tokens, cacheWrite: u.cache_creation_input_tokens } : null
+    const tokens = u
+      ? { input: u.input_tokens, output: u.output_tokens, cacheRead: u.cache_read_input_tokens, cacheWrite: u.cache_creation_input_tokens }
+      : null
     const state: TurnState = e.reason === 'answer' ? 'done' : e.reason === 'aborted' ? 'stopped' : 'error'
     const note = e.reason === 'refusal' ? (e.refusal.explanation ?? LABEL.refused) : e.reason === 'error' ? LABEL.apiError : null
     await update($, bars, list =>
@@ -1245,7 +1349,8 @@ export const register: Register = on => {
     if (list.length === 0 || e.props.hasSurvey || !(await read($, isOpen))) return next(e)
     const t = $.ui.resolve(e)
     const { Box, Button, Text } = t
-    const Svg = 'Svg' in t ? t.Svg : null
+    // the terminal's table names an Svg that draws nothing, so the surface decides, not the table
+    const Svg = e.surface !== 'terminal' && 'Svg' in t ? t.Svg : null
     const total = Math.max(320, (e.props.bodyColumns || 100) * 8)
     // a fixed title column, so the track does not move when a title arrives; every bar is pinned to the right edge
     // (fixed-width clock, close button) and the rows line up.
@@ -1254,6 +1359,14 @@ export const register: Register = on => {
     const trackW = Math.max(120, Math.min(1400, total - titleWidth - 164))
     await read($, tick)
     const now = await $.clock.now()
+    // the terminal: every part has a width counted in cells, so nothing is squeezed out of a narrow row.
+    // The engine keeps a few cells on the right for its own collapse mark.
+    const cols = Math.max(30, (e.props.bodyColumns || 80) - 4)
+    const labelCells = Math.max(...list.map(b => cells(`${pillName(b)} ${pillCount(b)}`)), 9)
+    // glyph, percent, label, clock, two buttons and the gaps between the eight parts
+    const fixedCells = 1 + 4 + labelCells + 4 + 1 + 1 + 7
+    const titleCells = cols - fixedCells >= 30 ? Math.min(20, Math.max(...list.map(b => cells(b.title || '…')))) : 0
+    const barCells = Math.max(8, Math.min(40, cols - fixedCells - titleCells - (titleCells > 0 ? 1 : 0)))
     // a hairline between bars, so each bar and its agent strips read as one group
     const divider = `<svg xmlns="http://www.w3.org/2000/svg" width="${total}" height="1"><rect width="${total}" height="1" fill="#808080" fill-opacity=".22"/></svg>`
 
@@ -1271,8 +1384,57 @@ export const register: Register = on => {
           const count = pillCount(b)
           const agentsAlt = v ? `; agents: ${(b.agents ?? []).map(a => `${a.title} ${a.state}`).join(', ')}` : ''
           const alt = `${b.title}: ${pillName(b)}${count ? `, ${count}` : ''}, ${time}${agentsAlt}`
-          const pct = Math.round((b.state === 'done' ? 1 : b.frac) * 100)
-          const bar = `${'━'.repeat(Math.round(pct / 4))}${'─'.repeat(25 - Math.round(pct / 4))}`
+          const frac = b.state === 'done' ? 1 : Math.min(1, Math.max(0, b.frac))
+          const pct = Math.round(frac * 100)
+          const filled = Math.round(frac * barCells)
+
+          if (!Svg) {
+            // subagents as a tree under the bar: name, what it does now, how long; finished ones dim
+            const TOOL_CELLS = 12
+            const tree = v
+              ? [
+                  ...v.shown.map(a => {
+                    const indent = a.depth > 0 ? '    ' : '  '
+                    const nameCells = Math.max(8, cols - cells(indent) - 2 - 1 - TOOL_CELLS - 1 - 5)
+                    const isOver = a.state === 'done'
+                    return (
+                      <Text key={`agent-${a.id}`}>
+                        <Text dimColor>{`${indent}└ `}</Text>
+                        <Text dimColor={isOver}>{fitCells(a.title, nameCells)}</Text>
+                        <Text color={AGENT_COLOR[a.state]}>{` ${fitCells(a.tool, TOOL_CELLS)}`}</Text>
+                        <Text dimColor>{` ${clockText((a.endedAt ?? now) - a.startedAt).padStart(5, ' ')}`}</Text>
+                      </Text>
+                    )
+                  }),
+                  ...(v.hidden.length > 0
+                    ? [
+                        <Text key={`agents-more-${b.id}`} dimColor>
+                          {`  └ +${plural(v.hidden.length, 'more agent')} · ${v.hidden.filter(a => a.state === 'done').length} done`}
+                        </Text>,
+                      ]
+                    : []),
+                ]
+              : []
+            // a dithered block bar: dark cells for what is done, light ones for the rest, the share beside it
+            return [
+              <Box key={`group-${b.id}`} flexDirection="column">
+                <Box key={`bar-${b.id}`} flexDirection="row" gap={1}>
+                  <Text color={color}>{STATE_GLYPH[b.state]}</Text>
+                  {titleCells > 0 ? <Text dimColor={!b.title}>{fitCells(b.title || '…', titleCells)}</Text> : null}
+                  <Text>
+                    <Text color={color}>{'▓'.repeat(filled)}</Text>
+                    <Text dimColor>{'░'.repeat(barCells - filled)}</Text>
+                  </Text>
+                  <Text>{`${String(pct).padStart(2, '0')}%`.padStart(4, ' ')}</Text>
+                  <Text color={color}>{fitCells(`${pillName(b)} ${pillCount(b)}`, labelCells)}</Text>
+                  <Text dimColor>{time.padStart(4, ' ')}</Text>
+                  <Button key={`timeline-${b.id}`} plain dimColor label={LABEL.timelineButton} onPress={() => $.ui.open({ id: PANE, title: LABEL.timeline })} />
+                  <Button key={`close-${b.id}`} plain dimColor label="✕" onPress={() => update($, bars, all => all.filter(x => x.id !== b.id))} />
+                </Box>
+                {tree}
+              </Box>,
+            ]
+          }
 
           return [
             ...line,
@@ -1280,15 +1442,7 @@ export const register: Register = on => {
               <Text color={color}>{STATE_GLYPH[b.state]}</Text>
               {b.title ? <Text wrap="truncate">{b.title}</Text> : <Text dimColor>…</Text>}
               <Box flexGrow={1} />
-              {Svg ? (
-                <Svg source={source} alt={alt} width={trackW} height={TRACK_H + stripsH} isInteractive={isSettled(b) || undefined} />
-              ) : (
-                <Text>
-                  <Text color={color}>{bar.replace(/─/g, '')}</Text>
-                  <Text dimColor>{bar.replace(/━/g, '')}</Text>
-                  <Text color={color}>{` ${pillName(b)}${count ? ` ${count}` : ''}`}</Text>
-                </Text>
-              )}
+              <Svg source={source} alt={alt} width={trackW} height={TRACK_H + stripsH} isInteractive={isSettled(b) || undefined} />
               <Text dimColor>{time.padStart(4, FIGURE_SPACE)}</Text>
               <Button key={`timeline-${b.id}`} plain dimColor label={LABEL.timelineButton} onPress={() => $.ui.open({ id: PANE, title: LABEL.timeline })} />
               <Button key={`close-${b.id}`} plain dimColor label="✕" onPress={() => update($, bars, all => all.filter(x => x.id !== b.id))} />
@@ -1304,7 +1458,8 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const t = $.ui.resolve(e)
     const { Box, Text } = t
-    const Svg = 'Svg' in t ? t.Svg : null
+    // the terminal's table names an Svg that draws nothing, so the surface decides, not the table
+    const Svg = e.surface !== 'terminal' && 'Svg' in t ? t.Svg : null
     const b = (await read($, bars)).at(-1)
     if (!b) return <Text dimColor>{LABEL.noTurn}</Text>
     await read($, tick)
@@ -1318,10 +1473,23 @@ export const register: Register = on => {
     // a call that took a fifth of the turn or more is where the time went
     const isLong = (ms: number) => ms >= total * 0.2 && ms >= 2000
     const offset = (at: number) => `+${clockText(at - b.startedAt)}`.padStart(5, FIGURE_SPACE)
-    const filled = Math.round((Math.min(total, SPAN_KINDS.reduce((n, k) => n + totals[k], 0)) / total) * 40)
+    const filled = Math.round(
+      (Math.min(
+        total,
+        SPAN_KINDS.reduce((n, k) => n + totals[k], 0),
+      ) /
+        total) *
+        40,
+    )
     const textBar = SPAN_KINDS.flatMap(k => {
       const n = Math.round((totals[k] / total) * 40)
-      return n > 0 ? [<Text key={`seg-${k}`} color={SPAN_COLOR[k]}>{'━'.repeat(n)}</Text>] : []
+      return n > 0
+        ? [
+            <Text key={`seg-${k}`} color={SPAN_COLOR[k]}>
+              {'━'.repeat(n)}
+            </Text>,
+          ]
+        : []
     })
 
     return (
@@ -1329,14 +1497,22 @@ export const register: Register = on => {
         <Box flexDirection="row" gap={1}>
           <Text color={color}>{STATE_GLYPH[b.state]}</Text>
           <Box flexGrow={1} flexShrink={1}>
-            <Text bold wrap="truncate">{b.title || '…'}</Text>
+            <Text bold wrap="truncate">
+              {b.title || '…'}
+            </Text>
           </Box>
           <Text color={color}>{pillName(b)}</Text>
           <Text dimColor>{clockText(total)}</Text>
         </Box>
         <Box flexDirection="column">
           {Svg ? (
-            <Svg source={phaseBarSvg(b, W, now)} alt={SPAN_KINDS.map(k => `${SPAN_LABEL[k]} ${durationText(totals[k])}`).join(', ')} width={W} height={PHASE_BAR_H} isInteractive={isSettled(b) || undefined} />
+            <Svg
+              source={phaseBarSvg(b, W, now)}
+              alt={SPAN_KINDS.map(k => `${SPAN_LABEL[k]} ${durationText(totals[k])}`).join(', ')}
+              width={W}
+              height={PHASE_BAR_H}
+              isInteractive={isSettled(b) || undefined}
+            />
           ) : (
             <Text>
               {textBar}
@@ -1361,7 +1537,9 @@ export const register: Register = on => {
                 <Text dimColor>{offset(c.startedAt ?? b.startedAt)}</Text>
                 <Text color={c.isError ? STATE_COLOR.error : STATE_COLOR.running}>{c.name}</Text>
                 <Box flexGrow={1} flexShrink={1}>
-                  <Text wrap="truncate" dimColor={!isLong(ms)}>{c.target}</Text>
+                  <Text wrap="truncate" dimColor={!isLong(ms)}>
+                    {c.target}
+                  </Text>
                 </Box>
                 <Text bold={isLong(ms)} dimColor={!isLong(ms)} color={c.isError ? STATE_COLOR.error : undefined}>
                   {c.endedAt === null ? `${LABEL.running} ${durationText(ms)}` : c.isError ? `${LABEL.failed} ${durationText(ms)}` : durationText(ms)}
@@ -1376,9 +1554,13 @@ export const register: Register = on => {
                 <Text dimColor>{offset(a.startedAt)}</Text>
                 <Text color={AGENT_COLOR[a.state]}>{`↳ ${LABEL.agents}`}</Text>
                 <Box flexGrow={1} flexShrink={1}>
-                  <Text wrap="truncate" dimColor={!isLong(ms)}>{a.title}</Text>
+                  <Text wrap="truncate" dimColor={!isLong(ms)}>
+                    {a.title}
+                  </Text>
                 </Box>
-                <Text bold={isLong(ms)} dimColor={!isLong(ms)}>{durationText(ms)}</Text>
+                <Text bold={isLong(ms)} dimColor={!isLong(ms)}>
+                  {durationText(ms)}
+                </Text>
               </Box>
             )
           })}
