@@ -46,7 +46,7 @@ const LABEL = {
   agentDone: '완료',
   agentFailed: '실패',
   agentStopped: '중단됨',
-  button: '진행',
+  button: 'Progress',
   calls: '도구 호출',
   running: '실행 중',
   writing: '준비 중',

@@ -144,7 +144,7 @@ CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude -p "Run ls once, then reply in one se
 | `turn.complete` | 서브에이전트 | 스트립을 `done`/`error`로 |
 | `turn.complete` | 메인 | `reason`별 상태: `answer`→`done`(frac=1), `aborted`→`stopped`, `error`→`error`(`API 오류`), `refusal`→`error`(`refusal.explanation`). `live = null`, `isTicking = false`|
 | `ui.render` `AbovePrompt` | 바가 있고, `hasSurvey`가 아니고, `isOpen` | 바 렌더링 (7장) |
-| `ui.render` `SessionMode` | 항상 | 푸터에 `진행` 라벨(글자). 바가 보이면 상태색, 아니면 dim |
+| `ui.render` `SessionMode` | 항상 | 푸터에 `Progress` 라벨(글자). 바가 보이면 상태색, 아니면 dim |
 | `command.run` | `/turnbar`, `/turnbar-clear` | 토글, 전체 제거 |
 
 ---
@@ -229,7 +229,7 @@ CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude -p "Run ls once, then reply in one se
 
 **접근성**: Svg `alt` = `제목: 라벨, 카운트, 경과시간; agents: …`.
 
-**푸터 라벨**: `SessionMode`에 `진행`을 버튼이 아닌 **글자(Text)** 로 항상 그리고, 아래 모드들의 라벨(`next(e)`)은 그대로 둔다. 바가 보이는 동안은 최신 턴의 상태색에 굵게, 숨겼거나 바가 없으면 dim이다. 데스크톱의 Button은 `plain`이어도 배경 칩을 그리고, 그 칩이 푸터 줄보다 높아서 글자가 잘렸다. 표시/숨김은 `/turnbar`로 한다.
+**푸터 라벨**: `SessionMode`에 `Progress`를 버튼이 아닌 **글자(Text)** 로 항상 그리고, 아래 모드들의 라벨(`next(e)`)은 그대로 둔다. 바가 보이는 동안은 최신 턴의 상태색에 굵게, 숨겼거나 바가 없으면 dim이다. 데스크톱의 Button은 `plain`이어도 배경 칩을 그리고, 그 칩이 푸터 줄보다 높아서 글자가 잘렸다. 표시/숨김은 `/turnbar`로 한다. 라벨은 영어 `Progress` 그대로 둔다. 한글 `진행`만으로는 무엇이 떠 있는지 알 수 없다.
 
 **행 오른쪽 버튼**: 시계 뒤에 `✕`(바 닫기) 하나만 둔다. `plain dimColor`. `trackW = clamp(120, total - titleWidth - 144, 1400)`. (타임라인 패널과 `≡` 버튼은 0.1.3에서 뺐다. 쓸 일이 적은데 화면만 복잡하게 만들었다.)
 
@@ -266,7 +266,7 @@ CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude -p "Run ls once, then reply in one se
 6. Agent 도구 2개 병렬: 스트립 2개, 완료 후 5초 뒤 접힘.
 7. 창을 좁히기(`W < 360`): 원형 노브에 구간 번호.
 8. 터미널(`claude --plugin-dir .`): 텍스트 바 폴백.
-9. 푸터 `진행` 라벨과 `/turnbar`: 숨김/표시 토글.
+9. 푸터 `Progress` 라벨과 `/turnbar`: 숨김/표시 토글.
 
 ---
 
@@ -421,7 +421,7 @@ const LABEL = {
   agentDone: '완료',
   agentFailed: '실패',
   agentStopped: '중단됨',
-  button: '진행',
+  button: 'Progress',
   calls: '도구 호출',
   running: '실행 중',
   writing: '준비 중',

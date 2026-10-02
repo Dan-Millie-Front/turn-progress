@@ -37,7 +37,7 @@ test('a turn with a tool call draws the bar and the footer label on every surfac
     }
     await band.unmount()
     const footer = await $.ui.mount({ plugin: 'turn-progress', surface, component: 'SessionMode', props: { modes: [] } })
-    expect(await footer.find({ type: 'Text', text: /^진행$/ })).toBeDefined()
+    expect(await footer.find({ type: 'Text', text: /^Progress$/ })).toBeDefined()
     await footer.unmount()
   }
 })
