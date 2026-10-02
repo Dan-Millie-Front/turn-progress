@@ -17,7 +17,7 @@ Claude Code에서:
 
 ```
 /plugin marketplace add Dan-Millie-Front/turn-progress
-/plugin install turn-progress@dan-mods
+/plugin install turn-progress@millie-mods
 ```
 
 함수 훅 모드를 쓰므로 Claude Code 2.1.286 이상이 필요합니다. 긴 요청의 제목 요약에 Haiku를 턴당 약 100토큰 씁니다.

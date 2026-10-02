@@ -83,14 +83,14 @@ ln -s ~/Github/turn-progress ~/.claude/skills/turn-progress
 
 **4) 마켓플레이스로 배포**: 저장소 루트의 `.claude-plugin/marketplace.json`이 저장소 자체(`"source": "./"`)를 플러그인 하나로 등록한다. 같은 `.claude-plugin/` 폴더에 `plugin.json`과 함께 둔다.
 ```json
-{ "name": "dan-mods", "owner": { "name": "Dan" }, "plugins": [{ "name": "turn-progress", "source": "./", "description": "..." }] }
+{ "name": "millie-mods", "owner": { "name": "Dan" }, "plugins": [{ "name": "turn-progress", "source": "./", "description": "..." }] }
 ```
 설치하는 쪽:
 ```
 /plugin marketplace add Dan-Millie-Front/turn-progress
-/plugin install turn-progress@dan-mods
+/plugin install turn-progress@millie-mods
 ```
-새 버전을 낼 때는 `plugin.json`의 `version`을 올리고 push한다. 받는 쪽은 `/plugin marketplace update dan-mods`로 갱신한다.
+새 버전을 낼 때는 `plugin.json`의 `version`을 올리고 push한다. 받는 쪽은 `/plugin marketplace update millie-mods`로 갱신한다.
 
 **검증 루프** (`tests/ui.test.tsx`는 턴 하나를 흉내 낸다. `$.turn.start` → Bash `$.tool.call` → `$.turn.complete` 순서로 이벤트를 일으킨 뒤, 바, 푸터 라벨, 타임라인 패널을 터미널과 데스크톱 두 화면에 띄워 앱이 거부할 트리가 없는지와 제목, 호출 설명, 토큰이 그려졌는지 확인한다. 테스트 쪽 `on`이 엔진 대신 `turn.start`, `turn.complete`, `tool.call`, `ui.render`에 답하고, 시계는 `mock.clock`이다)
 ```bash

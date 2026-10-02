@@ -1,7 +1,7 @@
 {
-  "name": "dan-mods",
+  "name": "millie-mods",
   "owner": { "name": "Dan" },
-  "metadata": { "description": "Claude Code mods by Dan" },
+  "metadata": { "description": "Claude Code mods by Millie" },
   "plugins": [
     {
       "name": "turn-progress",
