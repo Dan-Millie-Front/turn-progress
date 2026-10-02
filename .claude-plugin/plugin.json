@@ -1,0 +1,8 @@
+{
+  "name": "turn-progress",
+  "version": "0.1.0",
+  "description": "Live status bar above the prompt for each turn: request, thinking, working, answer",
+  "author": { "name": "Dan" },
+  "license": "MIT",
+  "types": "./types/index.d.ts"
+}

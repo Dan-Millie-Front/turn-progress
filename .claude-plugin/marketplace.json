@@ -1,0 +1,12 @@
+{
+  "name": "dan-mods",
+  "owner": { "name": "Dan" },
+  "metadata": { "description": "Claude Code mods by Dan" },
+  "plugins": [
+    {
+      "name": "turn-progress",
+      "source": "./",
+      "description": "Live status bar above the prompt for each turn: thinking, working, answer, with a timeline pane"
+    }
+  ]
+}
