@@ -196,7 +196,7 @@ CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude -p "Run ls once, then reply in one se
 - `total = max(320, bodyColumns * 8)` px (데스크톱은 1열이 약 8 CSS px).
 - 제목 칸은 고정 폭이다: `titleWidth = clamp(120, total*0.22, 220)`, `trackW = clamp(120, total - titleWidth - 140, 1400)`. 제목이 늦게 도착해도 트랙이 움직이지 않는다.
 - 바가 여러 개면(`MAX_BARS > 1`) 사이에 1px 헤어라인 SVG(`#808080`, opacity .22)를 넣는다.
-- 경과 시간: `59s`, `1:05` 형식이고 `padStart(4, U+2007 FIGURE SPACE)`라 9:59까지 폭이 고정된다(10분이 넘으면 한 칸 늘어난다). `endedAt`이 있으면 멈춘다.
+- 경과 시간: `59s`, `1:05` 형식. **데스크톱은 전용 작은 Svg(`clockSvg`, 44×18)**로 그린다. Text 요소에는 CSS를 줄 수 없고 앱 글꼴은 숫자마다 폭이 달라서, Text로 그리면 매초 폭이 흔들린다. Svg 안에서 `font-variant-numeric: tabular-nums`로 숫자 폭을 맞추고 `text-anchor="end"`로 오른쪽 끝에 붙인다. 트랙과 분리된 그림이라 매초 다시 그려지는 건 시계뿐이다. 터미널은 고정폭 글꼴이라 `padStart(4)`면 충분하다. `endedAt`이 있으면 멈춘다.
 - ✕: `Button plain dimColor`, 그 바를 `bars`에서 제거한다.
 
 **상태 색과 글리프**
@@ -666,6 +666,14 @@ function activityPhase(b: TurnBar): Phase {
   if (b.activity === LABEL.working) return 'working'
   if (b.activity === LABEL.answering) return 'answering'
   return b.phase
+}
+
+// the desktop clock: its own small picture, since a Text takes no CSS and the app's digits differ in width.
+// tabular-nums gives every digit one width and the text sits on the right edge, so the row never moves;
+// apart from the track, so a new second redraws only this
+const CLOCK_W = 44
+function clockSvg(text: string): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${CLOCK_W}" height="${TRACK_H}" viewBox="0 0 ${CLOCK_W} ${TRACK_H}"><style>.c{font:400 13px 'Anthropic Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;font-variant-numeric:tabular-nums;fill:#8A8984}</style><text x="${CLOCK_W}" y="${TRACK_H / 2 + 4.5}" text-anchor="end" class="c">${esc(text)}</text></svg>`
 }
 
 // last drawn head position per bar, so a redraw glides from where the bar was
@@ -1443,7 +1451,7 @@ export const register: Register = on => {
               {b.title ? <Text wrap="truncate">{b.title}</Text> : <Text dimColor>…</Text>}
               <Box flexGrow={1} />
               <Svg source={source} alt={alt} width={trackW} height={TRACK_H + stripsH} isInteractive={isSettled(b) || undefined} />
-              <Text dimColor>{time.padStart(4, FIGURE_SPACE)}</Text>
+              <Svg source={clockSvg(time)} alt={time} width={CLOCK_W} height={TRACK_H} />
               <Button key={`timeline-${b.id}`} plain dimColor label={LABEL.timelineButton} onPress={() => $.ui.open({ id: PANE, title: LABEL.timeline })} />
               <Button key={`close-${b.id}`} plain dimColor label="✕" onPress={() => update($, bars, all => all.filter(x => x.id !== b.id))} />
             </Box>,
