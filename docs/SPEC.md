@@ -13,7 +13,7 @@ UI는 [zycck/claude-mods](https://github.com/zycck/claude-mods)의 `plan-progres
 - 메인 대화의 매 턴마다 바 하나를 만들고, 스트리밍 이벤트만 보고 채운다.
 - 채움은 세 구간(**생각 → 작업 → 답변**) 비율로 진행하지만 구간 경계선은 그리지 않는다. 지금 구간은 pill의 `n/3`이 알려준다. 도구 호출 하나하나는 짧은 틱으로 표시한다.
 - 왼쪽에는 **작업 제목**을 보여준다. 20자 이하 한 줄 프롬프트는 그대로 쓰고, 그보다 길면 Haiku가 2~5단어로 요약한다(턴당 약 100토큰, 약 0.7초). 요약이 오기 전에는 dim `…`을 보여준다.
-- pill에는 지금 단계와 단계 위치를 보여준다: `생각 중 1/3` / `작업 중 2/3` / `답변 작성 3/3` / `완료 3/3`. 서브에이전트가 있으면 ` · 에이전트 1/2`를 붙인다. 도구 이름과 호출 수는 글자로 쓰지 않고 트랙 위 틱으로만 보여준다.
+- pill에는 지금 단계와 단계 위치를 보여준다: `생각 중 1/3` / `작업 중 2/3` / `답변 작성 3/3` / `완료 3/3`. 도구 이름과 호출 수는 글자로 쓰지 않고 트랙 위 틱으로만 보여준다. 에이전트 수는 붙이지 않는다(스트립이 따로 보여준다).
 - 오른쪽 고정 폭 칸에는 **경과 시간**을 보여준다. 턴 진행률은 미리 알 수 없어서 퍼센트 대신 시간을 쓴다.
 - 서브에이전트는 바 아래 상태 스트립으로 그린다. plan-progress와 동일하다.
 - 상태는 `running`, `needs_input`(질문, 플랜 승인, 권한 승인 대기), `error`, `stopped`(사용자 중단), `done`.
@@ -219,9 +219,9 @@ CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude -p "Run ls once, then reply in one se
 
 **pill 텍스트**
 - 라벨: done `완료`, stopped `중단됨`, error `오류 · <note>`, needs_input `<note>`(질문/플랜 승인/승인 대기), running은 `activity`.
-- 카운트: `n/3`(생각 1, 작업 2, 답변 3. 요청 직후는 1, 완료는 3). 서브에이전트가 있으면 ` · 에이전트 완료/전체`를 붙인다.
+- 카운트: `n/3`(생각 1, 작업 2, 답변 3. 요청 직후는 1, 완료는 3)만 붙인다. 도구 이름과 에이전트 수는 붙이지 않는다. 도구 호출은 틱, 서브에이전트는 스트립이 따로 보여준다.
 
-**에이전트 스트립** (`stripsSvg`, plan-progress 그대로): 트랙 아래 5px부터 18px 높이, 3px 간격. 이름과 시간 글자는 **테마를 따른다**: 기본은 `#26252B`(라이트), `@media (prefers-color-scheme:dark)`에서는 `#F0EEFC`. 데스크톱은 SVG를 이미지로 그리고, Chromium은 이미지 안의 미디어 쿼리에도 앱 테마를 반영한다(직접 확인함). 상태색 15% 바탕에 점(running이면 깜빡임), 이름(하위 에이전트는 `↳ `와 12px 들여쓰기), 현재 도구, 오른쪽에 경과 시간. 상태가 바뀌면 200ms 블러 모프와 색 흐름 애니메이션이 들어간다. 4개를 넘으면 완료된 것들은 `+N more agents · M done` 한 줄로 접힌다. 배치가 끝나고 5초 뒤 접히고, 실패한 스트립은 남는다.
+**에이전트 스트립** (`stripsSvg`, plan-progress 그대로): 트랙 아래 5px부터 18px 높이, 3px 간격. 이름과 시간 글자는 **테마를 따른다**: 기본은 `#26252B`(라이트), `@media (prefers-color-scheme:dark)`에서는 `#F0EEFC`. 데스크톱은 SVG를 이미지로 그리고, Chromium은 이미지 안의 미디어 쿼리에도 앱 테마를 반영한다(직접 확인함). 상태색 15% 바탕에 점(running이면 깜빡임), 이름(하위 에이전트는 `↳ `와 12px 들여쓰기), 현재 도구, 오른쪽에 경과 시간. 상태가 바뀌면 200ms 블러 모프와 색 흐름 애니메이션이 들어간다. 4개를 넘으면 완료된 것들은 `+N more agents · M done` 한 줄로 접힌다. 배치가 끝나고 5초 뒤 접히고, 실패한 스트립은 남는다. 문구는 한국어다: 시작하면 `시작 중`, 끝나면 `완료`, `실패`, `중단됨`이고, 접힌 줄은 `+에이전트 N개 더 · M개 완료`이다.
 
 **터미널** (`e.surface === 'terminal'`일 때. 터미널의 요소 표에도 `Svg`가 있지만 **아무것도 그리지 않는 빈 상자**라서, 요소 표에 `Svg`가 있는지가 아니라 surface로 판단해야 한다. 이걸 놓치면 터미널에서 바가 통째로 사라진다):
 ```
@@ -232,7 +232,7 @@ CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude -p "Run ls once, then reply in one se
 - 모든 칸의 폭을 **셀 단위로 직접 계산**한다(`cells`: 한글·CJK·전각은 2셀, `fitCells`: 넘치면 `…`로 자르고 남으면 공백으로 채움). flex에 맡기면 좁은 터미널에서 바 칸이 0으로 밀려 사라진다.
 - `cols = bodyColumns - 4`(엔진의 접기 표시 자리). 고정 칸은 글리프 1, 퍼센트 4, 라벨(가장 긴 `라벨 카운트`, 최소 9), 시계 4, 버튼 2개, 간격 7이다. 제목은 남는 폭이 30셀 이상일 때만 최대 20셀로 넣고, 바는 8~40셀이다.
 - 바: 끝난 몫은 `▓`(상태색), 나머지는 `░`(dim). 옆에 `05%` 형식으로 두 자리 이상, 4칸 오른쪽 정렬한 퍼센트를 붙인다.
-- 서브에이전트: 바 아래에 `└` 트리로 그린다(하위 에이전트는 4칸 들여쓰기). 이름(남는 폭), 지금 도구(12셀, 상태색), 경과 시간(5셀)이고, 끝난 에이전트는 이름을 dim으로 한다. 접힌 것들은 `└ +N more agents · M done` 한 줄로 묶는다. 바와 트리는 간격 없는 한 묶음(`Box column`)이다.
+- 서브에이전트: 바 아래에 `└` 트리로 그린다(하위 에이전트는 4칸 들여쓰기). 이름(남는 폭), 지금 도구(12셀, 상태색), 경과 시간(5셀)이고, 끝난 에이전트는 이름을 dim으로 한다. 접힌 것들은 `└ +에이전트 N개 더 · M개 완료` 한 줄로 묶는다. 바와 트리는 간격 없는 한 묶음(`Box column`)이다.
 
 **접근성**: Svg `alt` = `제목: 라벨, 카운트, 경과시간; agents: …`.
 
@@ -433,7 +433,10 @@ const LABEL = {
   stopped: '중단됨',
   done: '완료',
   untitled: '계속',
-  agents: '에이전트',
+  agentStarting: '시작 중',
+  agentDone: '완료',
+  agentFailed: '실패',
+  agentStopped: '중단됨',
   button: 'Progress',
   calls: '도구 호출',
   running: '실행 중',
@@ -586,9 +589,8 @@ function tokensText(b: TurnBar): string {
   return `${LABEL.tokens} ${LABEL.input} ${kilo(input)} (${LABEL.cache} ${cached}%) · ${LABEL.output} ${kilo(t.output)}`
 }
 
-function plural(n: number, word: string) {
-  return `${n} ${word}${n === 1 ? '' : 's'}`
-}
+// the folded strips: how many more, and how many of them finished
+const moreAgents = (n: number, done: number) => `에이전트 ${n}개 더 · ${done}개 완료`
 
 function pillName(b: TurnBar): string {
   if (b.state === 'done') return LABEL.done
@@ -599,15 +601,13 @@ function pillName(b: TurnBar): string {
   return b.activity
 }
 
-// the part of the turn as n/3 (thinking, working, answer), then the subagents while there are some;
-// tool calls show as ticks on the track, not as text
+// the part of the turn as n/3 (thinking, working, answer) and nothing else: tool calls show as ticks,
+// subagents as their own strips under the bar
 function pillCount(b: TurnBar): string {
   const parts = ORDER.length - 1
   const part = b.state === 'done' ? parts : Math.max(1, ORDER.indexOf(b.phase))
-  const agents = b.agents ?? []
-  const agentText = agents.length > 0 ? ` · ${LABEL.agents} ${agents.filter(a => a.state === 'done').length}/${agents.length}` : ''
 
-  return `${part}/${parts}${agentText}`
+  return `${part}/${parts}`
 }
 
 // the icon follows what happens now (the label), not the furthest phase: thinking again after a tool call shows dots
@@ -819,7 +819,7 @@ function stripsSvg(v: { shown: AgentRun[]; hidden: AgentRun[] }, W: number, now:
     const doneCount = v.hidden.filter(a => a.state === 'done').length
     rows.push(
       `<rect x="0" y="${y}" width="${W}" height="${STRIP_H}" rx="${STRIP_H / 2}" fill="#808080" fill-opacity=".14"/>` +
-        `<text x="10" y="${y + 12.5}" class="sn st">+${plural(v.hidden.length, 'more agent')} · ${doneCount} done</text>`,
+        `<text x="10" y="${y + 12.5}" class="sn st">+${moreAgents(v.hidden.length, doneCount)}</text>`,
     )
   }
   return `<style>.sn{font:400 11.5px 'Anthropic Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;fill:#26252B}.st{fill-opacity:.6}
@@ -1140,7 +1140,7 @@ export const register: Register = on => {
       id,
       title: (e.description || e.subagentType).slice(0, 60),
       state: 'running',
-      tool: 'Starting',
+      tool: LABEL.agentStarting,
       startedAt: now,
       endedAt: null,
       depth: parentHome ? 1 : 0,
@@ -1156,7 +1156,7 @@ export const register: Register = on => {
       if (agentHome.has(agentId)) {
         const now = await $.clock.now()
         const isFailed = e.reason !== 'answer'
-        const tool = e.reason === 'aborted' ? 'Stopped' : isFailed ? 'Failed' : 'Done'
+        const tool = e.reason === 'aborted' ? LABEL.agentStopped : isFailed ? LABEL.agentFailed : LABEL.agentDone
         await editAgent($, agentId, a => ({ ...a, state: isFailed ? 'error' : 'done', tool, endedAt: now }))
         if (isFailed) play($, 'error')
         agentHome.delete(agentId)
@@ -1310,7 +1310,7 @@ export const register: Register = on => {
                   ...(v.hidden.length > 0
                     ? [
                         <Text key={`agents-more-${b.id}`} dimColor>
-                          {`  └ +${plural(v.hidden.length, 'more agent')} · ${v.hidden.filter(a => a.state === 'done').length} done`}
+                          {`  └ +${moreAgents(v.hidden.length, v.hidden.filter(a => a.state === 'done').length)}`}
                         </Text>,
                       ]
                     : []),

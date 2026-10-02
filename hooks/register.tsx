@@ -42,7 +42,10 @@ const LABEL = {
   stopped: '중단됨',
   done: '완료',
   untitled: '계속',
-  agents: '에이전트',
+  agentStarting: '시작 중',
+  agentDone: '완료',
+  agentFailed: '실패',
+  agentStopped: '중단됨',
   button: 'Progress',
   calls: '도구 호출',
   running: '실행 중',
@@ -195,9 +198,8 @@ function tokensText(b: TurnBar): string {
   return `${LABEL.tokens} ${LABEL.input} ${kilo(input)} (${LABEL.cache} ${cached}%) · ${LABEL.output} ${kilo(t.output)}`
 }
 
-function plural(n: number, word: string) {
-  return `${n} ${word}${n === 1 ? '' : 's'}`
-}
+// the folded strips: how many more, and how many of them finished
+const moreAgents = (n: number, done: number) => `에이전트 ${n}개 더 · ${done}개 완료`
 
 function pillName(b: TurnBar): string {
   if (b.state === 'done') return LABEL.done
@@ -208,15 +210,13 @@ function pillName(b: TurnBar): string {
   return b.activity
 }
 
-// the part of the turn as n/3 (thinking, working, answer), then the subagents while there are some;
-// tool calls show as ticks on the track, not as text
+// the part of the turn as n/3 (thinking, working, answer) and nothing else: tool calls show as ticks,
+// subagents as their own strips under the bar
 function pillCount(b: TurnBar): string {
   const parts = ORDER.length - 1
   const part = b.state === 'done' ? parts : Math.max(1, ORDER.indexOf(b.phase))
-  const agents = b.agents ?? []
-  const agentText = agents.length > 0 ? ` · ${LABEL.agents} ${agents.filter(a => a.state === 'done').length}/${agents.length}` : ''
 
-  return `${part}/${parts}${agentText}`
+  return `${part}/${parts}`
 }
 
 // the icon follows what happens now (the label), not the furthest phase: thinking again after a tool call shows dots
@@ -428,7 +428,7 @@ function stripsSvg(v: { shown: AgentRun[]; hidden: AgentRun[] }, W: number, now:
     const doneCount = v.hidden.filter(a => a.state === 'done').length
     rows.push(
       `<rect x="0" y="${y}" width="${W}" height="${STRIP_H}" rx="${STRIP_H / 2}" fill="#808080" fill-opacity=".14"/>` +
-        `<text x="10" y="${y + 12.5}" class="sn st">+${plural(v.hidden.length, 'more agent')} · ${doneCount} done</text>`,
+        `<text x="10" y="${y + 12.5}" class="sn st">+${moreAgents(v.hidden.length, doneCount)}</text>`,
     )
   }
   return `<style>.sn{font:400 11.5px 'Anthropic Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;fill:#26252B}.st{fill-opacity:.6}
@@ -749,7 +749,7 @@ export const register: Register = on => {
       id,
       title: (e.description || e.subagentType).slice(0, 60),
       state: 'running',
-      tool: 'Starting',
+      tool: LABEL.agentStarting,
       startedAt: now,
       endedAt: null,
       depth: parentHome ? 1 : 0,
@@ -765,7 +765,7 @@ export const register: Register = on => {
       if (agentHome.has(agentId)) {
         const now = await $.clock.now()
         const isFailed = e.reason !== 'answer'
-        const tool = e.reason === 'aborted' ? 'Stopped' : isFailed ? 'Failed' : 'Done'
+        const tool = e.reason === 'aborted' ? LABEL.agentStopped : isFailed ? LABEL.agentFailed : LABEL.agentDone
         await editAgent($, agentId, a => ({ ...a, state: isFailed ? 'error' : 'done', tool, endedAt: now }))
         if (isFailed) play($, 'error')
         agentHome.delete(agentId)
@@ -919,7 +919,7 @@ export const register: Register = on => {
                   ...(v.hidden.length > 0
                     ? [
                         <Text key={`agents-more-${b.id}`} dimColor>
-                          {`  └ +${plural(v.hidden.length, 'more agent')} · ${v.hidden.filter(a => a.state === 'done').length} done`}
+                          {`  └ +${moreAgents(v.hidden.length, v.hidden.filter(a => a.state === 'done').length)}`}
                         </Text>,
                       ]
                     : []),

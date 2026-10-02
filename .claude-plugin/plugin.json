@@ -1,6 +1,6 @@
 {
   "name": "turn-progress",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Live status bar above the prompt for each turn: request, thinking, working, answer",
   "author": { "name": "Dan" },
   "license": "MIT",
