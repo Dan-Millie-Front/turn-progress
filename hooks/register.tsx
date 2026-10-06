@@ -322,7 +322,10 @@ function trackSvg(b: TurnBar, W: number, now: number): string {
   const kx = clampX(fx)
   const kFrom = clampX(from)
 
+  // once settled the track is drawn interactive, in a frame of its own; a frame whose color-scheme differs from
+  // the app's gets an opaque light backdrop in dark mode, so the picture declares both schemes
   const style = `<style>
+:root{color-scheme:light dark}
 .b0{fill:${buckets[0]?.color};fill-opacity:${buckets[0]?.opacity}}.b1{fill:${buckets[1]?.color};fill-opacity:${buckets[1]?.opacity}}
 .b2{fill:${buckets[2]?.color};fill-opacity:${buckets[2]?.opacity}}.b3{fill:${buckets[3]?.color};fill-opacity:${buckets[3]?.opacity}}
 .b4{fill:${buckets[4]?.color};fill-opacity:${buckets[4]?.opacity}}

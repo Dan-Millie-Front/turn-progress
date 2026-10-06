@@ -235,7 +235,7 @@ CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude -p "Run ls once, then reply in one se
 
 ### 7.1 툴팁 (Svg `isInteractive`)
 
-트랙 Svg는 **바가 멈춘 뒤에만** `isInteractive`로 그린다(`isSettled`: 턴이 끝났고 돌고 있는 에이전트가 없음). 대화형 Svg는 스크립트 없는 샌드박스 프레임이라 `<title>` 툴팁과 hover가 동작하지만, 다시 그릴 때마다 프레임을 새로 불러온다. 진행 중에는 1초마다 다시 그리므로 대화형으로 그리면 바가 깜빡인다. 그래서 진행 중에는 이미지로 그리고, 툴팁은 끝난 턴에서만 쓴다.
+트랙 Svg는 **바가 멈춘 뒤에만** `isInteractive`로 그린다(`isSettled`: 턴이 끝났고 돌고 있는 에이전트가 없음). 대화형 Svg는 스크립트 없는 샌드박스 프레임이라 `<title>` 툴팁과 hover가 동작하지만, 다시 그릴 때마다 프레임을 새로 불러온다. 진행 중에는 1초마다 다시 그리므로 대화형으로 그리면 바가 깜빡인다. 그래서 진행 중에는 이미지로 그리고, 툴팁은 끝난 턴에서만 쓴다. 대화형 프레임은 **앱과 color-scheme이 다르면 다크 모드에서 불투명한 흰 배경을 깐다**(완료된 바 뒤에 사각형이 생긴다). 그래서 트랙 Svg의 스타일 맨 앞에 `:root{color-scheme:light dark}`를 둔다. 프레임 안 문서 전체에 적용되어 앱의 다크 모드를 따르고, 배경이 투명해진다.
 - 틱마다 폭 8px짜리 투명 사각형을 겹치고 그 안에 `<title>`을 넣는다: `Edit · register.tsx · 0.8s`. 실행 중이면 `실행 중 3.2s`, 모델이 아직 호출을 쓰는 중이면 `준비 중`, 실패하면 `· 실패`가 붙고 틱이 빨간색이 된다.
 - pill 그룹의 `<title>`: `6 도구 호출 · 토큰 입력 125k (캐시 94%) · 출력 3.1k`. 토큰은 턴이 끝난 뒤에만 나온다.
 - 길이 표기: 10초 미만은 `0.8s`처럼 소수 한 자리, 그 이상은 `m:ss`.
@@ -697,7 +697,10 @@ function trackSvg(b: TurnBar, W: number, now: number): string {
   const kx = clampX(fx)
   const kFrom = clampX(from)
 
+  // once settled the track is drawn interactive, in a frame of its own; a frame whose color-scheme differs from
+  // the app's gets an opaque light backdrop in dark mode, so the picture declares both schemes
   const style = `<style>
+:root{color-scheme:light dark}
 .b0{fill:${buckets[0]?.color};fill-opacity:${buckets[0]?.opacity}}.b1{fill:${buckets[1]?.color};fill-opacity:${buckets[1]?.opacity}}
 .b2{fill:${buckets[2]?.color};fill-opacity:${buckets[2]?.opacity}}.b3{fill:${buckets[3]?.color};fill-opacity:${buckets[3]?.opacity}}
 .b4{fill:${buckets[4]?.color};fill-opacity:${buckets[4]?.opacity}}
